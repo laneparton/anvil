@@ -1,0 +1,46 @@
+{
+  "name": "anvil-review",
+  "description": "Local-first desktop workbench for AI-assisted pull request review.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:frontend": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:e2e": "tauri dev --features e2e-testing",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "smoke:inbox": "cargo run --manifest-path desktop/Cargo.toml --bin review_inbox_smoke -- --filter allOpen --limit 20",
+    "smoke:tauri": "scripts/tauri-smoke.sh",
+    "test:evals": "vitest run evals/review-plans/scorers.test.ts",
+    "e2e:browser": "playwright test --config e2e/playwright.config.ts --project=browser-only",
+    "e2e:tauri": "ANVIL_E2E_TAURI=1 playwright test --config e2e/playwright.tauri.config.ts --project=tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "shiki": "^4.0.2",
+    "tailwind-merge": "^3.6.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@srsholmes/tauri-playwright": "^0.2.2",
+    "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/cli": "^2.11.1",
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.0",
+    "tw-animate-css": "^1.4.0",
+    "vitest": "^4.1.6"
+  }
+}

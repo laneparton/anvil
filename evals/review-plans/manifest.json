@@ -1,0 +1,18 @@
+{
+  "schema": "review-plan-eval-manifest.v1",
+  "cases": [
+    {
+      "id": "assistant-ui-4025",
+      "repo": "assistant-ui/assistant-ui",
+      "prNumber": 4025,
+      "title": "feat(react-mcp): new package for user-managed MCP servers",
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/4025",
+      "baseRef": "main",
+      "headRef": "react-mcp",
+      "pinnedHeadSha": "fa412a6d75fac49acbb74f42497ef8d8adb72f7f",
+      "goldenPath": "evals/review-plans/golden/assistant-ui-4025.json",
+      "defaultCandidatePath": "evals/review-plans/fixtures/assistant-ui-4025.minimal-good.review-plan.json",
+      "weakCandidatePath": "evals/review-plans/fixtures/assistant-ui-4025.weak.review-plan.json"
+    }
+  ]
+}

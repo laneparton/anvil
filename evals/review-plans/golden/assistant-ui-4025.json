@@ -1,0 +1,185 @@
+{
+  "schema": "review-plan-golden.v1",
+  "pr": {
+    "repo": "assistant-ui/assistant-ui",
+    "number": 4025,
+    "title": "feat(react-mcp): new package for user-managed MCP servers",
+    "url": "https://github.com/assistant-ui/assistant-ui/pull/4025",
+    "baseRef": "main",
+    "headRef": "react-mcp",
+    "headSha": "fa412a6d75fac49acbb74f42497ef8d8adb72f7f",
+    "changedFiles": 61,
+    "additions": 3892,
+    "deletions": 1
+  },
+  "featureScope": "New @assistant-ui/react-mcp package for user-managed MCP servers.",
+  "thresholds": {
+    "deterministicPassScore": 0.85,
+    "judgePassScore": 0.8,
+    "maxPrimarySliceFiles": 18
+  },
+  "files": [
+    { "path": ".changeset/react-mcp-initial.md", "category": "metadata" },
+    { "path": "apps/docs/content/docs/integrations/tools/meta.json", "category": "docs" },
+    { "path": "apps/docs/content/docs/integrations/tools/react-mcp.mdx", "category": "docs" },
+    { "path": "examples/with-mcp/README.md", "category": "example" },
+    { "path": "examples/with-mcp/app/app/McpUI.tsx", "category": "example" },
+    { "path": "examples/with-mcp/app/app/layout.tsx", "category": "example" },
+    { "path": "examples/with-mcp/app/app/mcp/callback/page.tsx", "category": "example" },
+    { "path": "examples/with-mcp/app/app/page.tsx", "category": "example" },
+    { "path": "examples/with-mcp/app/app/providers.tsx", "category": "example" },
+    { "path": "examples/with-mcp/app/next.config.ts", "category": "example" },
+    { "path": "examples/with-mcp/app/tsconfig.json", "category": "example" },
+    { "path": "examples/with-mcp/package.json", "category": "example" },
+    { "path": "examples/with-mcp/server/server.ts", "category": "example" },
+    { "path": "examples/with-mcp/tsconfig.json", "category": "example" },
+    { "path": "packages/react-mcp/SPEC.md", "category": "docs" },
+    { "path": "packages/react-mcp/package.json", "category": "metadata" },
+    { "path": "packages/react-mcp/src/auth/buildHeaders.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/auth/createOAuthProvider.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/auth/types.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/connector.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/context/McpConnectorByIndexProvider.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/context/McpCustomServerByIndexProvider.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/context/McpServerByIdProvider.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/index.ts", "category": "public-api" },
+    { "path": "packages/react-mcp/src/mcp-scope.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm.ts", "category": "public-api" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormAuthFields.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormAuthSelect.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormCancel.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormError.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormNameField.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormSubmit.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/McpAddFormUrlField.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/addForm/context.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/manager.ts", "category": "public-api" },
+    { "path": "packages/react-mcp/src/primitives/manager/McpManagerAddCustomTrigger.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/manager/McpManagerCustomServers.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/manager/McpManagerRoot.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server.ts", "category": "public-api" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerConnectButton.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerDisconnectButton.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerError.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerIcon.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerName.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerOAuthLink.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerRemoveButton.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerRoot.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerStatus.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerToolName.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/primitives/server/McpServerTools.tsx", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/McpManagerResource.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/McpServerResource.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/storage/McpCustomStorage.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/storage/McpLocalStorage.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/storage/McpMemoryStorage.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/src/resources/storage/types.ts", "category": "runtime" },
+    { "path": "packages/react-mcp/tsconfig.json", "category": "metadata" },
+    { "path": "pnpm-lock.yaml", "category": "lockfile" }
+  ],
+  "requiredThemes": [
+    {
+      "id": "oauth-auth-storage",
+      "title": "MCP auth/OAuth state, PKCE, DCR, callback routing, token persistence, and refresh",
+      "anchorFiles": [
+        "packages/react-mcp/src/auth/createOAuthProvider.ts",
+        "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
+        "packages/react-mcp/src/resources/storage/McpLocalStorage.ts"
+      ],
+      "keywords": ["oauth", "state", "pkce", "dcr", "token", "storage", "callback", "refresh"],
+      "minKeywordHits": 5
+    },
+    {
+      "id": "server-lifecycle-transport",
+      "title": "Server lifecycle and StreamableHTTP transport cleanup",
+      "anchorFiles": ["packages/react-mcp/src/resources/McpServerResource.ts"],
+      "keywords": ["connect", "disconnect", "transport", "cleanup", "authrequired", "remove", "failure"],
+      "minKeywordHits": 4
+    },
+    {
+      "id": "manager-store-persistence",
+      "title": "Manager/store persistence and custom server records",
+      "anchorFiles": [
+        "packages/react-mcp/src/resources/McpManagerResource.ts",
+        "packages/react-mcp/src/mcp-scope.ts"
+      ],
+      "keywords": ["manager", "store", "custom server", "persistence", "records", "hydrated"],
+      "minKeywordHits": 4
+    },
+    {
+      "id": "tap-modelcontext-tools",
+      "title": "Tap/resource/modelContext integration and tool registration contract",
+      "anchorFiles": ["packages/react-mcp/src/index.ts", "packages/react-mcp/src/resources/McpManagerResource.ts"],
+      "keywords": ["tap", "resource", "modelcontext", "tools", "register", "public api"],
+      "minKeywordHits": 4
+    },
+    {
+      "id": "primitives-render-list-behavior",
+      "title": "Primitives and render-function list behavior",
+      "anchorFiles": [
+        "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx",
+        "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerTools.tsx"
+      ],
+      "keywords": ["primitive", "render", "list", "key", "stable id", "index", "form"],
+      "minKeywordHits": 4
+    },
+    {
+      "id": "support-docs-examples-lockfile",
+      "title": "Example, docs, package, lockfile, and changeset support material",
+      "anchorFiles": [
+        "apps/docs/content/docs/integrations/tools/react-mcp.mdx",
+        "examples/with-mcp/server/server.ts",
+        "pnpm-lock.yaml"
+      ],
+      "keywords": ["docs", "example", "package", "lockfile", "changeset", "support"],
+      "minKeywordHits": 4,
+      "requiresActionability": false
+    }
+  ],
+  "riskRanking": {
+    "highRiskFiles": [
+      "packages/react-mcp/src/auth/createOAuthProvider.ts",
+      "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
+      "packages/react-mcp/src/resources/McpServerResource.ts",
+      "packages/react-mcp/src/resources/McpManagerResource.ts",
+      "packages/react-mcp/src/index.ts"
+    ],
+    "lowValueFiles": [
+      ".changeset/react-mcp-initial.md",
+      "apps/docs/content/docs/integrations/tools/meta.json",
+      "apps/docs/content/docs/integrations/tools/react-mcp.mdx",
+      "examples/with-mcp/README.md",
+      "packages/react-mcp/SPEC.md",
+      "pnpm-lock.yaml"
+    ]
+  },
+  "evidenceQuality": {
+    "requiredAnchorFiles": [
+      "packages/react-mcp/src/auth/createOAuthProvider.ts",
+      "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
+      "packages/react-mcp/src/resources/McpServerResource.ts",
+      "packages/react-mcp/src/resources/McpManagerResource.ts",
+      "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx"
+    ]
+  },
+  "approvalSafety": {
+    "requiredConcerns": [
+      { "id": "auth-token-storage risk", "keywords": ["token", "storage", "localstorage", "plaintext"] },
+      { "id": "oauth callback/state risk", "keywords": ["oauth", "callback", "state", "strict mode"] },
+      { "id": "transport lifecycle risk", "keywords": ["transport", "cleanup", "disconnect", "remove"] },
+      { "id": "proof gap", "keywords": ["proof", "test", "manual", "gap"] }
+    ]
+  },
+  "knownBadPatterns": [
+    "one giant New package or UI behavior slice",
+    "docs/examples/lockfile ranked as equal to auth/resource code",
+    "generic evidence such as parsed the diff",
+    "approval suggestion without concrete OAuth/storage/lifecycle proof",
+    "no mention of token storage or OAuth callback risks"
+  ]
+}

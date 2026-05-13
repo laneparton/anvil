@@ -1,0 +1,238 @@
+{
+  "schema": "review-plan.v0",
+  "pr": {
+    "repo": "assistant-ui/assistant-ui",
+    "number": 4025,
+    "title": "feat(react-mcp): new package for user-managed MCP servers",
+    "url": "https://github.com/assistant-ui/assistant-ui/pull/4025",
+    "baseRef": "main",
+    "headRef": "react-mcp",
+    "headSha": "fa412a6d75fac49acbb74f42497ef8d8adb72f7f",
+    "changedFiles": 61,
+    "additions": 3892,
+    "deletions": 1
+  },
+  "slices": [
+    {
+      "id": "oauth-auth-token-storage",
+      "title": "OAuth state, callback routing, token storage, and refresh",
+      "risk": "high",
+      "why": "This is the new trust boundary: createOAuthProvider.ts owns OAuth state, PKCE, DCR and token refresh, useMcpOAuthCallback.tsx redeems callback codes, and the storage resources persist tokens and PKCE verifiers.",
+      "files": [
+        "packages/react-mcp/src/auth/buildHeaders.ts",
+        "packages/react-mcp/src/auth/createOAuthProvider.ts",
+        "packages/react-mcp/src/auth/types.ts",
+        "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
+        "packages/react-mcp/src/resources/storage/McpCustomStorage.ts",
+        "packages/react-mcp/src/resources/storage/McpLocalStorage.ts",
+        "packages/react-mcp/src/resources/storage/McpMemoryStorage.ts",
+        "packages/react-mcp/src/resources/storage/types.ts"
+      ],
+      "hunks": [
+        { "file": "packages/react-mcp/src/auth/createOAuthProvider.ts", "hunkId": "packages/react-mcp/src/auth/createOAuthProvider.ts#oauth-provider", "reason": "PKCE, DCR, state encoding, token refresh and persisted auth state" },
+        { "file": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx", "hunkId": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx#callback", "reason": "OAuth callback id routing and code redemption" },
+        { "file": "packages/react-mcp/src/resources/storage/McpLocalStorage.ts", "hunkId": "packages/react-mcp/src/resources/storage/McpLocalStorage.ts#local-storage", "reason": "Plaintext localStorage token persistence" }
+      ],
+      "evidence": [
+        "packages/react-mcp/src/auth/createOAuthProvider.ts: verify encode/decode state, PKCE verifier persistence, DCR client persistence, and refresh token writes.",
+        "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx: check callback is idempotent under React Strict Mode so code redemption cannot run twice.",
+        "packages/react-mcp/src/resources/storage/McpLocalStorage.ts: localStorage stores tokens in plaintext; docs need to keep production escape hatch via McpCustomStorage."
+      ],
+      "acceptConditions": [
+        "Accept if state round-trip routes the callback to exactly one server id and invalid/mismatched state fails closed.",
+        "Accept if token, verifier, client, and refresh persistence are intentionally scoped and docs call out plaintext localStorage risk."
+      ],
+      "commentConditions": [
+        "Comment if useMcpOAuthCallback.tsx can redeem the same code twice under Strict Mode remounts.",
+        "Comment if refresh-token updates or clearAuthState can leave stale plaintext tokens in localStorage."
+      ],
+      "inlineComments": [
+        {
+          "file": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
+          "hunkId": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx#callback",
+          "line": 42,
+          "body": "Verify this callback cannot redeem the same OAuth code twice during React Strict Mode double effect execution."
+        }
+      ]
+    },
+    {
+      "id": "server-lifecycle-transport-cleanup",
+      "title": "Server connect/auth/failure/disconnect transport lifecycle",
+      "risk": "high",
+      "why": "McpServerResource.ts owns StreamableHTTP transport creation, authRequired transitions, connect failures, tool refresh, disconnect, remove, and cleanup. The server primitives expose those lifecycle paths to users.",
+      "files": [
+        "packages/react-mcp/src/resources/McpServerResource.ts",
+        "packages/react-mcp/src/primitives/server.ts",
+        "packages/react-mcp/src/primitives/server/McpServerConnectButton.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerDisconnectButton.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerError.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerIcon.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerName.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerOAuthLink.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerRemoveButton.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerRoot.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerStatus.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerToolName.tsx",
+        "packages/react-mcp/src/primitives/server/McpServerTools.tsx"
+      ],
+      "hunks": [
+        { "file": "packages/react-mcp/src/resources/McpServerResource.ts", "hunkId": "packages/react-mcp/src/resources/McpServerResource.ts#lifecycle", "reason": "Connect, authRequired, failure, disconnect, remove and cleanup paths" }
+      ],
+      "evidence": [
+        "packages/react-mcp/src/resources/McpServerResource.ts: check every connect/authRequired/failure/disconnect/remove path closes the active transport and client.",
+        "packages/react-mcp/src/primitives/server/McpServerOAuthLink.tsx: lifecycle state controls whether an OAuth URL is exposed.",
+        "packages/react-mcp/src/primitives/server/McpServerTools.tsx: tool list rendering depends on connected state and stable tool identity."
+      ],
+      "acceptConditions": [
+        "Accept if transport cleanup runs on disconnect, failed connect, authRequired replacement, and remove.",
+        "Accept if buttons and OAuthLink only render in lifecycle states where the action is valid."
+      ],
+      "commentConditions": [
+        "Comment if a failed or removed server can leave an active StreamableHTTP transport or MCP client alive.",
+        "Comment if authRequired transitions can leak a stale OAuth URL or stale tools."
+      ]
+    },
+    {
+      "id": "manager-store-custom-server-records",
+      "title": "Manager store, hydration, connector lookup, and custom server records",
+      "risk": "high",
+      "why": "McpManagerResource.ts and mcp-scope.ts define the manager/store contract, custom server persistence, hydration, connector ids, and per-server scoping.",
+      "files": [
+        "packages/react-mcp/src/connector.ts",
+        "packages/react-mcp/src/context/McpConnectorByIndexProvider.tsx",
+        "packages/react-mcp/src/context/McpCustomServerByIndexProvider.tsx",
+        "packages/react-mcp/src/context/McpServerByIdProvider.tsx",
+        "packages/react-mcp/src/mcp-scope.ts",
+        "packages/react-mcp/src/resources/McpManagerResource.ts"
+      ],
+      "hunks": [
+        { "file": "packages/react-mcp/src/resources/McpManagerResource.ts", "hunkId": "packages/react-mcp/src/resources/McpManagerResource.ts#manager", "reason": "Manager resource hydration, custom server records, and persistence" },
+        { "file": "packages/react-mcp/src/mcp-scope.ts", "hunkId": "packages/react-mcp/src/mcp-scope.ts#store", "reason": "Store state shape and custom server records" }
+      ],
+      "evidence": [
+        "packages/react-mcp/src/resources/McpManagerResource.ts: inspect load/save custom server records and hydration ordering.",
+        "packages/react-mcp/src/mcp-scope.ts: verify store fields distinguish preset connectors from user custom server records.",
+        "packages/react-mcp/src/context/McpServerByIdProvider.tsx: confirm per-server scope resolution cannot select the wrong server id."
+      ],
+      "acceptConditions": [
+        "Accept if custom server add/remove/update operations persist records and hydrate exactly once into the manager store.",
+        "Accept if connector and custom-server ids remain stable across storage reloads."
+      ],
+      "commentConditions": [
+        "Comment if hydration can overwrite user custom server records or duplicate preset connectors.",
+        "Comment if server lookup by index can drift when lists reorder."
+      ]
+    },
+    {
+      "id": "tap-modelcontext-public-api",
+      "title": "Tap resources, modelContext tool registration, and public API surface",
+      "risk": "medium",
+      "why": "The package exports a Tap/resource surface and modelContext tools contract. Even though McpManagerResource.ts owns the implementation, this slice checks the public API wiring and package-level contract.",
+      "files": [
+        "packages/react-mcp/src/index.ts",
+        "packages/react-mcp/package.json",
+        "packages/react-mcp/tsconfig.json"
+      ],
+      "hunks": [
+        { "file": "packages/react-mcp/src/index.ts", "hunkId": "packages/react-mcp/src/index.ts#exports", "reason": "Public API exports for resources, primitives, hooks, and adapters" },
+        { "file": "packages/react-mcp/package.json", "hunkId": "packages/react-mcp/package.json#package", "reason": "Package entrypoints and dependencies for Tap/modelContext integration" }
+      ],
+      "evidence": [
+        "packages/react-mcp/src/index.ts: verify public API exports include resource, primitive, hook, storage, and mcpRuntimeToolsToAiSdkTools contracts.",
+        "packages/react-mcp/src/resources/McpManagerResource.ts: referenced as evidence for Tap resource and modelContext tool registration behavior.",
+        "packages/react-mcp/package.json: check package dependencies expose @assistant-ui/store, @assistant-ui/tap, and MCP SDK assumptions."
+      ],
+      "acceptConditions": [
+        "Accept if exported names match the docs/SPEC and no internal-only store details leak as public API.",
+        "Accept if modelContext tool registration has a stable collision strategy and does not auto-register outside the mounted store."
+      ],
+      "commentConditions": [
+        "Comment if public API names churn from the PR body or docs contract.",
+        "Comment if tool names, modelContext registration, or the AI SDK adapter create ambiguous runtime behavior."
+      ]
+    },
+    {
+      "id": "primitive-render-function-list-behavior",
+      "title": "Add form primitives and render-function list behavior",
+      "risk": "medium",
+      "why": "McpAddFormRoot.tsx owns submitted custom-server form state, auth field rendering, validation, and primitive composition. Manager and server list primitives must key render-function lists by stable ids, not array index.",
+      "files": [
+        "packages/react-mcp/src/primitives/addForm.ts",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormAuthFields.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormAuthSelect.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormCancel.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormError.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormNameField.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormSubmit.tsx",
+        "packages/react-mcp/src/primitives/addForm/McpAddFormUrlField.tsx",
+        "packages/react-mcp/src/primitives/addForm/context.tsx",
+        "packages/react-mcp/src/primitives/manager.ts",
+        "packages/react-mcp/src/primitives/manager/McpManagerAddCustomTrigger.tsx",
+        "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx",
+        "packages/react-mcp/src/primitives/manager/McpManagerCustomServers.tsx",
+        "packages/react-mcp/src/primitives/manager/McpManagerRoot.tsx"
+      ],
+      "hunks": [
+        { "file": "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx", "hunkId": "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx#form", "reason": "Custom server form state, validation, submit and cancel behavior" },
+        { "file": "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx", "hunkId": "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx#list", "reason": "Connector render-function list behavior and key choice" }
+      ],
+      "evidence": [
+        "packages/react-mcp/src/primitives/addForm/McpAddFormRoot.tsx: inspect form validation, auth mode changes, submit side effects, and reset behavior.",
+        "packages/react-mcp/src/primitives/manager/McpManagerConnectors.tsx: ensure render-function list keys use stable connector ids, not index.",
+        "packages/react-mcp/src/primitives/manager/McpManagerCustomServers.tsx: ensure custom server list keys use stable stored ids, not index."
+      ],
+      "acceptConditions": [
+        "Accept if form submission validates name/url/auth fields and uses the manager addCustomServer contract without stale draft state.",
+        "Accept if connector/custom/server tool lists render with stable ids instead of index keys."
+      ],
+      "commentConditions": [
+        "Comment if McpAddFormRoot.tsx can submit incomplete bearer/OAuth auth records.",
+        "Comment if any render-function list is keyed by array index and can remount the wrong scoped server."
+      ]
+    },
+    {
+      "id": "docs-examples-package-lockfile-support",
+      "title": "Docs, examples, package metadata, changeset, and lockfile support",
+      "risk": "low",
+      "deferred": true,
+      "why": "Support material should validate the runtime contract but should not outrank OAuth, lifecycle, store, or public API risk.",
+      "files": [
+        ".changeset/react-mcp-initial.md",
+        "apps/docs/content/docs/integrations/tools/meta.json",
+        "apps/docs/content/docs/integrations/tools/react-mcp.mdx",
+        "examples/with-mcp/README.md",
+        "examples/with-mcp/app/app/McpUI.tsx",
+        "examples/with-mcp/app/app/layout.tsx",
+        "examples/with-mcp/app/app/mcp/callback/page.tsx",
+        "examples/with-mcp/app/app/page.tsx",
+        "examples/with-mcp/app/app/providers.tsx",
+        "examples/with-mcp/app/next.config.ts",
+        "examples/with-mcp/app/tsconfig.json",
+        "examples/with-mcp/package.json",
+        "examples/with-mcp/server/server.ts",
+        "examples/with-mcp/tsconfig.json",
+        "packages/react-mcp/SPEC.md",
+        "pnpm-lock.yaml"
+      ],
+      "hunks": [
+        { "file": "apps/docs/content/docs/integrations/tools/react-mcp.mdx", "hunkId": "apps/docs/content/docs/integrations/tools/react-mcp.mdx#docs", "reason": "Docs describe storage, OAuth callback, custom servers, and support caveats" },
+        { "file": "examples/with-mcp/server/server.ts", "hunkId": "examples/with-mcp/server/server.ts#oauth-example", "reason": "Example OAuth MCP server exercises the support flow" },
+        { "file": "pnpm-lock.yaml", "hunkId": "pnpm-lock.yaml#lockfile", "reason": "Lockfile support for package/example dependencies" }
+      ],
+      "evidence": [
+        "apps/docs/content/docs/integrations/tools/react-mcp.mdx: docs should call out plaintext localStorage token risk and MCPCustomStorage production escape hatch.",
+        "examples/with-mcp/server/server.ts: example OAuth server is support evidence for PKCE/DCR/callback flow, not the primary risk surface.",
+        "pnpm-lock.yaml and .changeset/react-mcp-initial.md are support material and should stay low-risk unless dependency changes imply runtime risk."
+      ],
+      "acceptConditions": [
+        "Accept if docs and examples accurately mirror the runtime review findings."
+      ],
+      "commentConditions": [
+        "Comment if docs promise encryption, auto-reconnect, resources/prompts, or production token safety the package does not implement."
+      ]
+    }
+  ],
+  "hiddenGroups": [],
+  "fallbackFileList": []
+}

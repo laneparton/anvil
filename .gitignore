@@ -1,0 +1,11 @@
+node_modules
+dist
+desktop/target
+.DS_Store
+.env
+.env.*
+!.env.example
+.tauri-smoke
+test-results
+evalite-export
+evals/review-plans/reports
