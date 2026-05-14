@@ -19,17 +19,25 @@ Early desktop app. The current runtime supports GitHub and Bitbucket Cloud pull 
 ## Development
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-Useful checks:
+## Fresh Checkout Verification
+
+From a clean checkout, install dependencies from the lockfile and run the same checks as CI:
 
 ```sh
+npm ci
+npx playwright install chromium
+npm run lint
 npm run build
+npm run test:evals
 cargo test --manifest-path desktop/Cargo.toml
 npm run e2e:browser
 ```
+
+For native desktop development, install the Tauri prerequisites for your platform before running `npm run dev` or `npm run smoke:tauri`.
 
 ## Provider Setup
 
