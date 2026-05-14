@@ -4,19 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { PrepareReviewArtifacts, ReviewSessionEvent } from "@/lib/api";
+import type { PrepareState } from "@/app/review-preparation";
+import type { ReviewSessionEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type LoadingState = "idle" | "loading" | "ready" | "error";
-
-export type PrepareState = {
-  status: LoadingState;
-  error?: string;
-  sessionId?: string;
-  artifacts?: PrepareReviewArtifacts;
-  events: ReviewSessionEvent[];
-  canceling: boolean;
-};
+export type { PrepareState } from "@/app/review-preparation";
 
 export type PreparingScreenProps = {
   state: PrepareState;

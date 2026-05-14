@@ -17,9 +17,11 @@ import {
   type ReviewInboxSourceFilter,
   type ReviewSourceId,
 } from "@/app/LauncherScreen";
-import { PreparingScreen, type PrepareState } from "@/app/PreparingScreen";
+import { PreparingScreen } from "@/app/PreparingScreen";
 import { ReviewWorkspaceScreen } from "@/app/ReviewWorkspaceScreen";
 import { SettingsScreen } from "@/app/SettingsScreen";
+import { useReviewPreparation } from "@/app/useReviewPreparation";
+import type { LoadingState } from "@/app/review-preparation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -29,18 +31,14 @@ import { ReviewQueue } from "@/components/review/review-queue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   listReviewInbox,
-  cancelReviewSession,
   configureAppSettings,
   openReviewAgent,
-  startReviewSession,
-  subscribeReviewSession,
   submitReviewSession,
   type ReviewAgent,
   type ReviewSessionEvent,
-  type ReviewSessionReadyData,
   type ReviewInboxRow,
-  type StartReviewSessionRequest,
 } from "@/lib/api";
+import { formatUnknownError } from "@/lib/errors";
 import { highlightTypeScriptLines, type HighlightToken } from "@/lib/syntax-highlight";
 import { cn } from "@/lib/utils";
 import { filterActionableQuestions } from "@/lib/review-questions";
@@ -50,7 +48,7 @@ import {
   type ReviewProgressSlice,
   useReviewProgress,
 } from "@/lib/review-progress";
-import type { Hunk, ReviewPlan, Slice } from "@/lib/review-types";
+import type { Hunk, ReviewPlan } from "@/lib/review-types";
 import {
   defaultAppSettings,
   loadAppSettings,
@@ -96,12 +94,7 @@ const emptyReviewPlan: ReviewPlan = {
   ],
 };
 
-type PendingPrepareRequest = Omit<StartReviewSessionRequest, "sessionId"> & {
-  title?: string;
-};
-
 type AppStage = "launcher" | "preparing" | "review" | "settings";
-type LoadingState = "idle" | "loading" | "ready" | "error";
 type SubmitState = {
   status: "idle" | "submitting" | "submitted" | "error";
   error?: string;
@@ -158,10 +151,6 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, AppError
 }
 
 function App() {
-  const [reviewPlan, setReviewPlan] = React.useState<ReviewPlan>(emptyReviewPlan);
-  const progress = useReviewProgress(reviewPlan, {
-    storageKey: `review-progress:${reviewPlan.pr.repo}:${reviewPlan.pr.number}`,
-  });
   const [stage, setStage] = React.useState<AppStage>("launcher");
   const [settingsReturnStage, setSettingsReturnStage] = React.useState<AppStage>("launcher");
   const [appSettings, setAppSettings] = React.useState<AppSettings>(defaultAppSettings);
@@ -177,20 +166,42 @@ function App() {
   const [reviewInboxState, setReviewInboxState] = React.useState<LoadingState>("idle");
   const [reviewInboxRefreshId, setReviewInboxRefreshId] = React.useState(0);
   const [launcherError, setLauncherError] = React.useState<string | undefined>();
-  const [prepareState, setPrepareState] = React.useState<PrepareState>(() => createPrepareState("idle"));
-  const [prepareRunId, setPrepareRunId] = React.useState(0);
-  const [prepareRequest, setPrepareRequest] = React.useState<PendingPrepareRequest | undefined>();
-  const [pendingSliceIds, setPendingSliceIds] = React.useState<Set<string>>(() => new Set());
-  const [activeSessionId, setActiveSessionId] = React.useState<string | undefined>();
-  const [activeId, setActiveId] = React.useState(reviewPlan.slices[0]?.id);
+  const [activeId, setActiveId] = React.useState<string | undefined>(emptyReviewPlan.slices[0]?.id);
   const [selectedCommentId, setSelectedCommentId] = React.useState<string | undefined>();
   const [submitState, setSubmitState] = React.useState<SubmitState>({ status: "idle" });
   const [agentLaunchState, setAgentLaunchState] = React.useState<AgentLaunchState>({ status: "idle" });
   const returnToLauncherTimer = React.useRef<number | undefined>(undefined);
-  const reviewWorktree = React.useMemo(
-    () => prepareState.artifacts?.worktree ?? findLatestReviewWorktree(prepareState.events),
-    [prepareState.artifacts?.worktree, prepareState.events],
-  );
+  const clearProgressRef = React.useRef<() => void>(() => undefined);
+  const clearReviewProgress = React.useCallback(() => clearProgressRef.current(), []);
+  const handleReviewOpened = React.useCallback(({ activeSliceId }: { activeSliceId?: string }) => {
+    setSubmitState({ status: "idle" });
+    setSelectedCommentId(undefined);
+    setActiveId(activeSliceId);
+    setStage("review");
+  }, []);
+  const handlePreparationCanceled = React.useCallback(() => {
+    setStage("launcher");
+  }, []);
+  const {
+    activeSessionId,
+    cancelPreparation,
+    pendingSliceIds,
+    prepareRequest,
+    prepareState,
+    resetPreparation,
+    reviewPlan,
+    reviewWorktree,
+    startPreparation,
+  } = useReviewPreparation({
+    initialReviewPlan: emptyReviewPlan,
+    clearProgress: clearReviewProgress,
+    onReviewOpened: handleReviewOpened,
+    onPreparationCanceled: handlePreparationCanceled,
+  });
+  const progress = useReviewProgress(reviewPlan, {
+    storageKey: `review-progress:${reviewPlan.pr.repo}:${reviewPlan.pr.number}`,
+  });
+  clearProgressRef.current = progress.clearProgress;
   const active = progress.slices.find((slice) => slice.id === activeId) ?? progress.slices[0];
   const openComments = React.useMemo(
     () => active.comments.filter((comment) => comment.decision === "open"),
@@ -224,15 +235,14 @@ function App() {
 
     returnToLauncherTimer.current = window.setTimeout(() => {
       progress.clearProgress();
-      setActiveSessionId(undefined);
-      setPrepareRequest(undefined);
+      resetPreparation();
       setSelectedCommentId(undefined);
       setSubmitState({ status: "idle" });
       setStage("launcher");
       setReviewInboxRefreshId((id) => id + 1);
       returnToLauncherTimer.current = undefined;
     }, 1200);
-  }, [progress]);
+  }, [progress, resetPreparation]);
   const handleSaveSettings = React.useCallback((nextSettings: AppSettings) => {
     const normalizedEnv = settingsEnv(nextSettings);
     const settingsToSave = {
@@ -303,7 +313,7 @@ function App() {
     setLauncherError(undefined);
     setReviewInboxRows([]);
     setSelectedPullRequest("");
-    setPrepareRequest(undefined);
+    resetPreparation();
 
     const finishProvider = () => {
       pendingProviders -= 1;
@@ -360,161 +370,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [appSettings, reviewInboxRefreshId, settingsLoaded]);
-
-  React.useEffect(() => {
-    if (prepareRunId === 0) {
-      return;
-    }
-
-    let cancelled = false;
-    let completed = false;
-    let openedReview = false;
-    let subscription: { unsubscribe: () => void } | undefined;
-    const sessionId = createReviewSessionId();
-    if (!prepareRequest) {
-      return;
-    }
-
-    const request: StartReviewSessionRequest = {
-      sessionId,
-      source: prepareRequest.source,
-      repo: prepareRequest.repo,
-      pullRequest: prepareRequest.pullRequest,
-    };
-
-    const appendEvent = (event: ReviewSessionEvent) => {
-      setPrepareState((current) => ({
-        ...current,
-        events: [...current.events, event],
-      }));
-    };
-    const enterReview = (data: ReviewSessionReadyData, sessionId?: string) => {
-      if (cancelled) return;
-      completed = true;
-      setPendingSliceIds(new Set());
-      setReviewPlan(normalizeReviewPlan(data.plan));
-      if (!openedReview) {
-        progress.clearProgress();
-      }
-      setSubmitState({ status: "idle" });
-      setSelectedCommentId(undefined);
-      setActiveId(data.plan.slices[0]?.id);
-      setActiveSessionId(sessionId);
-      setPrepareState((current) => ({
-        ...current,
-        status: "ready",
-        artifacts: data.artifacts,
-      }));
-      setStage("review");
-    };
-
-    setPrepareState({
-      ...createPrepareState("loading"),
-      sessionId,
-      events: [
-        createReviewSessionEvent("session.created", `Created review session ${sessionId}.`),
-        createReviewSessionEvent("session.subscribing", "Subscribing to Tauri review events."),
-      ],
-    });
-    setActiveSessionId(sessionId);
-
-    subscribeReviewSession(sessionId, {
-      onEvent: (event) => {
-        if (cancelled) return;
-        appendEvent(event);
-
-        const readySlice = getReadySlice(event.data);
-        if (event.type === "slice.ready" && readySlice) {
-          setPendingSliceIds((current) => {
-            const next = new Set(current);
-            next.delete(readySlice.id);
-            return next;
-          });
-          setReviewPlan((current) =>
-          mergeStreamingSlice(
-              current,
-              normalizeSlice(readySlice),
-              prepareRequest,
-              getTotalSlices(event.data),
-              !openedReview,
-            ),
-          );
-
-          if (!openedReview) {
-            openedReview = true;
-            progress.clearProgress();
-            setSubmitState({ status: "idle" });
-            setSelectedCommentId(undefined);
-            setActiveId(readySlice.id);
-            setStage("review");
-          }
-        }
-
-        const plannedSlices = getPlannedSlices(event.data);
-        if (event.type === "planner.ready" && plannedSlices.length > 0 && !openedReview) {
-          const orderedPlannedSlices = orderPlannedSlices(plannedSlices);
-          openedReview = true;
-          setReviewPlan((current) => createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest));
-          setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id)));
-          progress.clearProgress();
-          setSubmitState({ status: "idle" });
-          setSelectedCommentId(undefined);
-          setActiveId(orderedPlannedSlices[0].id);
-          setStage("review");
-        }
-
-        const readyData =
-          isReviewSessionReadyData(event.data) ? event.data :
-          isReviewSessionReadyData(event) ? event :
-          undefined;
-
-        if ((event.type === "review.ready" || event.type === "session.completed") && readyData) {
-          enterReview(readyData, sessionId);
-        }
-
-        if (event.type === "review.failed" || event.type === "session.failed") {
-          completed = true;
-          setPrepareState((current) => ({
-            ...current,
-            status: "error",
-            error: event.message || "Review session failed.",
-          }));
-        }
-      },
-      onError: (error) => {
-        if (cancelled || completed) return;
-        completed = true;
-        appendEvent(createReviewSessionEvent("session.listen_failed", error.message));
-        setPrepareState((current) => ({ ...current, status: "error", error: error.message }));
-      },
-    })
-      .then((nextSubscription) => {
-        if (cancelled) {
-          nextSubscription.unsubscribe();
-          return;
-        }
-        subscription = nextSubscription;
-        appendEvent(createReviewSessionEvent("session.invoke", "Starting Tauri review runtime."));
-        return startReviewSession(request);
-      })
-      .then((result) => {
-        if (cancelled || !result) return;
-        appendEvent(createReviewSessionEvent("session.started", `Review session ${result.sessionId} started.`));
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        const message = formatUnknownError(error);
-        completed = true;
-        appendEvent(createReviewSessionEvent("review.failed", message, { error }));
-        setPrepareState((current) => ({ ...current, status: "error", error: message }));
-      });
-
-    return () => {
-      cancelled = true;
-      subscription?.unsubscribe();
-    };
-  }, [prepareRequest, prepareRunId, progress.clearProgress]);
+  }, [appSettings, resetPreparation, reviewInboxRefreshId, settingsLoaded]);
 
   React.useEffect(() => {
     return () => {
@@ -668,18 +524,14 @@ function App() {
           setSelectedPullRequest(target.id);
           setSelectedRepo(repo);
           setSelectedSource(source);
-          setPrepareRequest({
+          startPreparation({
             source,
             repo,
             pullRequest: pullRequestNumber,
             title: target.title,
           });
-          setActiveSessionId(undefined);
-          setPendingSliceIds(new Set());
           setSubmitState({ status: "idle" });
-          setPrepareState(createPrepareState("idle"));
           setStage("preparing");
-          setPrepareRunId((id) => id + 1);
         }}
       />
     );
@@ -691,29 +543,7 @@ function App() {
         state={prepareState}
         repo={effectiveSelectedRepo}
         pullRequest={effectiveSelectedPullRequest}
-        onCancel={() => {
-          const sessionId = prepareState.sessionId;
-          setPrepareState((current) => ({ ...current, canceling: Boolean(sessionId) }));
-
-          if (!sessionId) {
-            setPrepareRequest(undefined);
-            setStage("launcher");
-            return;
-          }
-
-          cancelReviewSession(sessionId)
-            .catch((error: Error) => {
-              setPrepareState((current) => ({
-                ...current,
-                events: [...current.events, createReviewSessionEvent("session.cancel_failed", error.message)],
-              }));
-            })
-            .finally(() => {
-              setActiveSessionId(undefined);
-              setPrepareRequest(undefined);
-              setStage("launcher");
-            });
-        }}
+        onCancel={cancelPreparation}
       />
     );
   }
@@ -724,7 +554,7 @@ function App() {
       pullRequest={reviewPlan.pr.number}
       title={reviewPlan.pr.title}
       onExitReview={() => {
-        setPrepareRequest(undefined);
+        resetPreparation();
         setStage("launcher");
       }}
       onOpenSettings={openSettings}
@@ -1151,270 +981,6 @@ function PendingDecisionRail({ event }: { event?: ReviewSessionEvent }) {
       </CardContent>
     </Card>
   );
-}
-
-function createPrepareState(status: LoadingState): PrepareState {
-  return {
-    status,
-    events: [],
-    canceling: false,
-  };
-}
-
-function createReviewSessionId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `review-${crypto.randomUUID()}`;
-  }
-
-  return `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function createReviewSessionEvent(
-  type: string,
-  message: string,
-  data?: unknown,
-): ReviewSessionEvent {
-  return {
-    type,
-    message,
-    at: new Date().toISOString(),
-    data,
-  };
-}
-
-function formatUnknownError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  if (typeof error === "object" && error !== null) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-
-  try {
-    const serialized = JSON.stringify(error);
-    if (serialized && serialized !== "{}") return serialized;
-  } catch {
-    // Fall through to the generic message.
-  }
-
-  return "The Tauri review runtime failed before returning an error message.";
-}
-
-function normalizeReviewPlan(input: ReviewPlan): ReviewPlan {
-  return {
-    ...input,
-    slices: orderReviewSlices(input.slices.map(normalizeSlice)),
-  };
-}
-
-function normalizeSlice(slice: Slice): Slice {
-  return {
-    ...slice,
-    deferred: Boolean(slice.deferred),
-    deferReason: typeof slice.deferReason === "string" ? slice.deferReason : "",
-    remainingQuestions: filterActionableQuestions(slice.remainingQuestions),
-  };
-}
-
-function getReadySlice(data: unknown): Slice | undefined {
-  if (typeof data !== "object" || data === null || !("slice" in data)) {
-    return undefined;
-  }
-
-  const slice = (data as { slice?: unknown }).slice;
-  if (
-    typeof slice === "object" &&
-    slice !== null &&
-    "id" in slice &&
-    "hunks" in slice &&
-    Array.isArray((slice as { hunks?: unknown }).hunks)
-  ) {
-    return slice as Slice;
-  }
-
-  return undefined;
-}
-
-function getTotalSlices(data: unknown): number | undefined {
-  if (typeof data !== "object" || data === null || !("totalSlices" in data)) {
-    return undefined;
-  }
-
-  const totalSlices = (data as { totalSlices?: unknown }).totalSlices;
-  return typeof totalSlices === "number" ? totalSlices : undefined;
-}
-
-type PlannedSlice = Pick<Slice, "id" | "title" | "risk" | "why" | "files">;
-
-function getPlannedSlices(data: unknown): PlannedSlice[] {
-  if (typeof data !== "object" || data === null || !("plannedSlices" in data)) {
-    return [];
-  }
-
-  const plannedSlices = (data as { plannedSlices?: unknown }).plannedSlices;
-  if (!Array.isArray(plannedSlices)) {
-    return [];
-  }
-
-  return plannedSlices.filter((slice): slice is PlannedSlice => {
-    return (
-      typeof slice === "object" &&
-      slice !== null &&
-      typeof (slice as { id?: unknown }).id === "string" &&
-      typeof (slice as { title?: unknown }).title === "string" &&
-      ((slice as { risk?: unknown }).risk === "high" ||
-        (slice as { risk?: unknown }).risk === "medium" ||
-        (slice as { risk?: unknown }).risk === "low") &&
-      typeof (slice as { why?: unknown }).why === "string" &&
-      Array.isArray((slice as { files?: unknown }).files)
-    );
-  });
-}
-
-function createPlannedReviewPlan(
-  current: ReviewPlan,
-  plannedSlices: PlannedSlice[],
-  request: PendingPrepareRequest,
-): ReviewPlan {
-  return {
-    ...current,
-    pr: {
-      repo: request.repo ?? current.pr.repo,
-      number: Number(request.pullRequest) || current.pr.number,
-      title: request.title || current.pr.title,
-    },
-    completion: {
-      status: "needs-human",
-      reviewedFiles: 0,
-      totalFiles: current.completion.totalFiles,
-      reviewedHunks: 0,
-      totalHunks: current.completion.totalHunks,
-      blockingComments: 0,
-      openQuestions: 0,
-    },
-    slices: plannedSlices.map((slice) => ({
-      ...slice,
-      status: "needs-human",
-      deferred: false,
-      deferReason: "",
-      filesReviewed: [],
-      hunks: [],
-      inlineComments: [],
-      remainingQuestions: [],
-      evidence: [],
-    })),
-  };
-}
-
-function mergeStreamingSlice(
-  current: ReviewPlan,
-  slice: Slice,
-  request: PendingPrepareRequest,
-  totalSlices: number | undefined,
-  replaceExisting: boolean,
-): ReviewPlan {
-  const existingSlices = replaceExisting ? [] : current.slices;
-  const slices = [
-    ...existingSlices.filter((candidate) => candidate.id !== slice.id),
-    slice,
-  ];
-  const totalFiles = new Set(slices.flatMap((candidate) => candidate.files)).size;
-  const reviewedFiles = new Set(slices.flatMap((candidate) => candidate.filesReviewed)).size;
-  const reviewedHunks = slices.reduce((sum, candidate) => sum + candidate.hunks.length, 0);
-  const blockingComments = slices.reduce(
-    (sum, candidate) =>
-      sum + candidate.inlineComments.filter((comment) => comment.severity === "blocking").length,
-    0,
-  );
-  const openQuestions = slices.reduce(
-    (sum, candidate) => sum + filterActionableQuestions(candidate.remainingQuestions).length,
-    0,
-  );
-
-  return {
-    ...current,
-    pr: {
-      repo: request.repo ?? current.pr.repo,
-      number: Number(request.pullRequest) || current.pr.number,
-      title: request.title || current.pr.title,
-    },
-    completion: {
-      status: blockingComments > 0 ? "blocked" : openQuestions > 0 ? "needs-human" : "agent-reviewed",
-      reviewedFiles,
-      totalFiles: Math.max(totalFiles, current.completion.totalFiles),
-      reviewedHunks,
-      totalHunks: Math.max(reviewedHunks, current.completion.totalHunks),
-      blockingComments,
-      openQuestions,
-    },
-    slices: orderReviewSlices(slices),
-  };
-}
-
-function orderReviewSlices(slices: Slice[]): Slice[] {
-  return [...slices].sort((a, b) => {
-    if (a.deferred !== b.deferred) return a.deferred ? 1 : -1;
-    const riskDelta = riskRank(b.risk) - riskRank(a.risk);
-    if (riskDelta !== 0) return riskDelta;
-    return 0;
-  });
-}
-
-function orderPlannedSlices(slices: PlannedSlice[]): PlannedSlice[] {
-  return [...slices].sort((a, b) => {
-    const riskDelta = riskRank(b.risk) - riskRank(a.risk);
-    if (riskDelta !== 0) return riskDelta;
-    return 0;
-  });
-}
-
-function riskRank(risk: Slice["risk"]) {
-  if (risk === "high") return 3;
-  if (risk === "medium") return 2;
-  return 1;
-}
-
-function isReviewSessionReadyData(data: unknown): data is ReviewSessionReadyData {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "plan" in data &&
-    typeof (data as { plan?: unknown }).plan === "object" &&
-    (data as { plan?: unknown }).plan !== null
-  );
-}
-
-function findLatestReviewWorktree(events: ReviewSessionEvent[]) {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    const directWorktree = getWorktreeFromUnknown(event);
-    if (directWorktree) return directWorktree;
-
-    const dataWorktree = getWorktreeFromUnknown(event.data);
-    if (dataWorktree) return dataWorktree;
-  }
-
-  return undefined;
-}
-
-function getWorktreeFromUnknown(value: unknown) {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (typeof record.worktree === "string") {
-    return record.worktree;
-  }
-
-  if (typeof record.artifacts === "object" && record.artifacts !== null) {
-    const artifacts = record.artifacts as Record<string, unknown>;
-    if (typeof artifacts.worktree === "string") {
-      return artifacts.worktree;
-    }
-  }
-
-  return undefined;
 }
 
 type FileHunkGroup = {
