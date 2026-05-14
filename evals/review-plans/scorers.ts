@@ -452,13 +452,6 @@ function buildOfflineJudgeProxy(candidate: ReviewPlan, golden: GoldenSpec, check
   };
 }
 
-async function loadConfiguredJudge(): Promise<ReviewPlanEvalResult["judge"] | null> {
-  const path = process.env.REVIEW_PLAN_EVAL_JUDGE_JSON;
-  if (!path) return null;
-  const judge = await loadJson<Omit<ReviewPlanEvalResult["judge"], "mode">>(path);
-  return { ...judge, mode: "json-file" };
-}
-
 function check(name: string, failures: string[], evidence: string[]): CheckResult {
   return {
     name,
