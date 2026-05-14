@@ -23,11 +23,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 25
+          node-version-file: .node-version
           cache: npm
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup show
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -58,17 +58,5 @@ jobs:
       - name: Install browser dependencies
         run: npx playwright install --with-deps chromium
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Run eval scorer tests
-        run: npm run test:evals
-
-      - name: Run Rust tests
-        run: cargo test --manifest-path desktop/Cargo.toml
-
-      - name: Run browser e2e tests
-        run: npm run e2e:browser
+      - name: Verify
+        run: npm run verify
