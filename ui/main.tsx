@@ -52,6 +52,7 @@ import {
 } from "@/lib/review-progress";
 import type { Hunk, InlineComment, ReviewPlan, Slice } from "@/lib/review-types";
 import {
+  defaultAppSettings,
   loadAppSettings,
   resetAppSettings,
   resolveTerminalApp,
@@ -163,7 +164,8 @@ function App() {
   });
   const [stage, setStage] = React.useState<AppStage>("launcher");
   const [settingsReturnStage, setSettingsReturnStage] = React.useState<AppStage>("launcher");
-  const [appSettings, setAppSettings] = React.useState<AppSettings>(() => loadAppSettings());
+  const [appSettings, setAppSettings] = React.useState<AppSettings>(defaultAppSettings);
+  const [settingsLoaded, setSettingsLoaded] = React.useState(false);
   const [settingsSavedAt, setSettingsSavedAt] = React.useState<string | undefined>();
   const [selectedSource, setSelectedSource] = React.useState<ReviewSourceId>("github");
   const [selectedRepo, setSelectedRepo] = React.useState("");
@@ -238,23 +240,60 @@ function App() {
       env: normalizedEnv,
     };
 
-    saveAppSettings(settingsToSave);
-    setAppSettings(settingsToSave);
-    setSettingsSavedAt("Saved");
-    configureAppSettings({ env: normalizedEnv }).catch((error: Error) => {
-      setSettingsSavedAt(formatUnknownError(error));
-    });
+    setSettingsSavedAt("Saving");
+    saveAppSettings(settingsToSave)
+      .then((savedSettings) => configureAppSettings({ env: settingsEnv(savedSettings) }).then(() => savedSettings))
+      .then((savedSettings) => {
+        setAppSettings(savedSettings);
+        setSettingsSavedAt("Saved");
+      })
+      .catch((error: Error) => {
+        setSettingsSavedAt(formatUnknownError(error));
+      });
   }, []);
   const handleResetSettings = React.useCallback(() => {
-    const nextSettings = resetAppSettings();
-    setAppSettings(nextSettings);
-    setSettingsSavedAt("Reset");
-    configureAppSettings({ env: {} }).catch((error: Error) => {
-      setSettingsSavedAt(formatUnknownError(error));
-    });
+    setSettingsSavedAt("Resetting");
+    resetAppSettings()
+      .then((nextSettings) => configureAppSettings({ env: {} }).then(() => nextSettings))
+      .then((nextSettings) => {
+        setAppSettings(nextSettings);
+        setSettingsSavedAt("Reset");
+      })
+      .catch((error: Error) => {
+        setSettingsSavedAt(formatUnknownError(error));
+      });
   }, []);
 
   React.useEffect(() => {
+    let cancelled = false;
+
+    loadAppSettings()
+      .then((loadedSettings) => {
+        if (!cancelled) {
+          setAppSettings(loadedSettings);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setSettingsSavedAt(formatUnknownError(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSettingsLoaded(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!settingsLoaded) {
+      return;
+    }
+
     let cancelled = false;
     const providers = (["github", "bitbucket"] as const).filter((provider) => appSettings.enabledProviders[provider]);
     let pendingProviders = providers.length;
@@ -321,7 +360,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [appSettings, reviewInboxRefreshId]);
+  }, [appSettings, reviewInboxRefreshId, settingsLoaded]);
 
   React.useEffect(() => {
     if (prepareRunId === 0) {
@@ -1690,10 +1729,13 @@ function SliceReviewContext({ slice }: { slice: ReviewProgressSlice }) {
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <FileCode2 className="size-4" />
         Reviewer brief
+        <span className="font-normal normal-case tracking-normal text-muted-foreground">
+          {formatCount(slice.hunks.length, "hunk")} across {formatCount(slice.files.length, "file")}
+        </span>
       </div>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <BriefRow label="What changed" value={brief.whatChanged} />
-        <BriefRow label="Why it matters" value={brief.whyItMatters} />
+        <BriefRow label="Change to review" value={brief.whatChanged} />
+        <BriefRow label="Review focus" value={brief.whyItMatters} />
       </div>
       {currentQuestion ? (
         <div className="grid gap-1 rounded-md border border-anvil-attention/30 bg-anvil-attention/10 px-3 py-2">
@@ -1742,16 +1784,77 @@ function VerificationChecklist({ checks }: { checks: string[] }) {
 
 function buildReviewerBrief(slice: ReviewProgressSlice, actionableQuestions: string[]): ReviewerBrief {
   const lineChange = getRepeatedLineChange(slice);
-  const whatChanged = lineChange
-    ? `Updates ${formatCount(slice.hunks.length, "hunk")} across ${formatCount(slice.files.length, "file")} from ${lineChange.removed} to ${lineChange.added}.`
-    : `Changes ${formatCount(slice.hunks.length, "hunk")} across ${formatCount(slice.files.length, "file")}.`;
-  const whyItMatters = slice.why.trim() || "The reviewer needs to confirm the diff matches the pull request intent before approving.";
+  const whatChanged = buildChangeSummary(slice, lineChange);
+  const whyItMatters = buildReviewFocus(slice, actionableQuestions);
 
   return {
     whatChanged,
     whyItMatters,
     checks: buildVerificationChecks(slice, actionableQuestions, lineChange),
   };
+}
+
+function buildChangeSummary(slice: ReviewProgressSlice, lineChange: RepeatedLineChange | undefined) {
+  if (lineChange) {
+    return `Repeated edit from ${lineChange.removed} to ${lineChange.added}.`;
+  }
+
+  const usefulWhy = usefulBriefSentence(slice.why);
+  if (usefulWhy) {
+    return usefulWhy;
+  }
+
+  const usefulHunkReason = slice.hunks.map((hunk) => usefulBriefSentence(hunk.reason)).find(Boolean);
+  if (usefulHunkReason) {
+    return usefulHunkReason;
+  }
+
+  return slice.title.trim() || "Review the changed behavior in this slice.";
+}
+
+function buildReviewFocus(slice: ReviewProgressSlice, actionableQuestions: string[]) {
+  const focusItems = [
+    usefulBriefSentence(slice.decisionQuestion),
+    usefulBriefSentence(slice.primaryRisk),
+    firstUsefulCondition(slice.commentConditions),
+    firstUsefulCondition(slice.acceptConditions),
+    actionableQuestions[0],
+  ].filter(Boolean);
+
+  if (focusItems.length > 0) {
+    return focusItems.slice(0, 2).join(" ");
+  }
+
+  return "Decide whether the changed behavior is complete, covered by evidence, and safe to approve.";
+}
+
+function firstUsefulCondition(conditions: string[] | undefined) {
+  return conditions?.map(usefulBriefSentence).find(Boolean);
+}
+
+function usefulBriefSentence(value: string | undefined) {
+  const sentence = normalizeSentence(value);
+  if (!sentence || isLowSignalBriefText(sentence)) {
+    return undefined;
+  }
+
+  return sentence;
+}
+
+function normalizeSentence(value: string | undefined) {
+  const sentence = value?.trim().replace(/\s+/g, " ");
+  if (!sentence) return undefined;
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+function isLowSignalBriefText(value: string) {
+  const lower = value.toLowerCase();
+  if (/^changes? \d+ hunks? across \d+ files?\./.test(lower)) return true;
+  if (lower.includes("#h") && lower.includes(" adds ")) return true;
+  if ((lower.match(/\bsrc\//g)?.length ?? 0) >= 2) return true;
+  if ((lower.match(/\.(ts|tsx|js|jsx|json|md|example|env)\b/g)?.length ?? 0) >= 2) return true;
+  if (lower === "planned by agentic rust review runtime.") return true;
+  return false;
 }
 
 function formatCount(count: number, singular: string, plural = `${singular}s`) {

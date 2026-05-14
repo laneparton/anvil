@@ -146,6 +146,10 @@ export type AppSettingsBridge = {
   env: Record<string, string>;
 };
 
+export type StoredAppSettingsBridge = {
+  settings: unknown;
+};
+
 export type QueuedReviewComment = {
   file: string;
   line: number | string;
@@ -259,6 +263,30 @@ export async function configureAppSettings(settings: AppSettingsBridge): Promise
   await tauriInvoke("configure_app_settings", { settings });
 }
 
+export async function loadNativeAppSettings(): Promise<unknown | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+
+  return tauriInvoke<unknown | null>("load_app_settings");
+}
+
+export async function saveNativeAppSettings(settings: unknown): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await tauriInvoke("save_app_settings", { payload: { settings } satisfies StoredAppSettingsBridge });
+}
+
+export async function resetNativeAppSettings(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await tauriInvoke("reset_app_settings");
+}
+
 async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauriRuntime()) {
     throw new Error("Anvil must be opened through the Tauri desktop app for native commands to run.");
@@ -271,7 +299,7 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
   }
 }
 
-function isTauriRuntime(): boolean {
+export function isTauriRuntime(): boolean {
   const runtime = globalThis as typeof globalThis & {
     __TAURI_INTERNALS__?: unknown;
     __TAURI__?: unknown;

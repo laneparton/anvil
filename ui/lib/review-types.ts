@@ -30,6 +30,9 @@ export type Slice = {
   status: Status;
   deferred: boolean;
   deferReason: string;
+  primaryRisk?: string;
+  decisionQuestion?: string;
+  whyTheseFilesTogether?: string;
   why: string;
   files: string[];
   filesReviewed: string[];
@@ -37,6 +40,8 @@ export type Slice = {
   inlineComments: InlineComment[];
   remainingQuestions: string[];
   evidence: string[];
+  acceptConditions?: string[];
+  commentConditions?: string[];
 };
 
 export type ReviewPlan = {
