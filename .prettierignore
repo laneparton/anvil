@@ -1,0 +1,10 @@
+dist
+desktop/target
+node_modules
+.tauri-smoke
+test-results
+evalite-export
+evals/review-plans/reports
+evals/review-plans/fixtures/*.json
+evals/review-plans/golden/*.json
+package-lock.json

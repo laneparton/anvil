@@ -50,7 +50,7 @@ import {
   type ReviewProgressSlice,
   useReviewProgress,
 } from "@/lib/review-progress";
-import type { Hunk, InlineComment, ReviewPlan, Slice } from "@/lib/review-types";
+import type { Hunk, ReviewPlan, Slice } from "@/lib/review-types";
 import {
   defaultAppSettings,
   loadAppSettings,
