@@ -25,7 +25,7 @@ pub(crate) struct SubmitReviewRequest {
     pub(crate) repo: String,
     pub(crate) pull_request: String,
     pub(crate) action: SubmitReviewAction,
-    pub(crate) comments: Vec<Value>,
+    pub(crate) comments: Vec<QueuedReviewComment>,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -33,6 +33,22 @@ pub(crate) struct SubmitReviewRequest {
 pub(crate) enum SubmitReviewAction {
     Approve,
     Comment,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct QueuedReviewComment {
+    pub(crate) file: Option<String>,
+    pub(crate) line: Option<QueuedReviewCommentLine>,
+    pub(crate) draft: Option<String>,
+    pub(crate) body: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub(crate) enum QueuedReviewCommentLine {
+    Number(i64),
+    String(String),
 }
 
 #[derive(Deserialize)]
