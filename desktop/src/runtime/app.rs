@@ -1,5 +1,7 @@
 use super::types::ReviewSessionStore;
 use std::sync::Arc;
+#[cfg(feature = "e2e-testing")]
+use tauri::ipc::CapabilityBuilder;
 use tauri::Manager;
 
 pub fn run() {
@@ -27,6 +29,13 @@ pub fn run() {
                 let labels = app.webview_windows().keys().cloned().collect::<Vec<_>>();
                 println!("Anvil webview windows after setup: {labels:?}");
             }
+
+            #[cfg(feature = "e2e-testing")]
+            app.add_capability(
+                CapabilityBuilder::new("e2e-playwright")
+                    .window("main")
+                    .permission("playwright:default"),
+            )?;
 
             Ok(())
         });
