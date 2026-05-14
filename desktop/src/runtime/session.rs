@@ -8,7 +8,12 @@ use super::{
     util::{parse_bitbucket_repo, review_lab_root, slug, unix_millis},
 };
 use serde_json::{json, Value};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::PathBuf,
+    sync::Arc,
+};
 use tauri::{AppHandle, State};
 
 struct ReviewSessionCleanup {
@@ -144,6 +149,9 @@ pub(crate) fn submit_review_session(
         ));
     }
 
+    validate_submit_comments(&request.comments)?;
+    validate_submit_comment_anchors(&request)?;
+
     let provider_result = submit_provider_review(&request)?;
     let receipt_id = format!("receipt-{}", unix_millis());
     Ok(json!({
@@ -230,6 +238,122 @@ fn validate_submit_comments(comments: &[QueuedReviewComment]) -> Result<(), Stri
     }
 
     Ok(())
+}
+
+fn validate_submit_comment_anchors(request: &SubmitReviewRequest) -> Result<(), String> {
+    if request.comments.is_empty() {
+        return Ok(());
+    }
+
+    let plan = load_submit_review_plan(request)?;
+    let anchors = comment_anchor_surface_from_review_plan(&plan)?;
+    validate_submit_comments_against_anchors(&request.comments, &anchors)
+}
+
+fn validate_submit_comments_against_anchors(
+    comments: &[QueuedReviewComment],
+    anchors: &HashMap<String, HashSet<i64>>,
+) -> Result<(), String> {
+    for (index, comment) in comments.iter().enumerate() {
+        let number = index + 1;
+        let Some(path) = comment_file(comment) else {
+            return Err(format!(
+                "Review comment {number} must include a file anchor."
+            ));
+        };
+        let Some(line) = comment_line_number(comment)? else {
+            return Err(format!(
+                "Review comment {number} must include a line anchor."
+            ));
+        };
+        let Some(lines) = anchors.get(path) else {
+            return Err(format!(
+                "Review comment {number} references file outside the pull request diff: {path}."
+            ));
+        };
+
+        if !lines.contains(&line) {
+            return Err(format!(
+                "Review comment {number} references {path}:{line}, which is not in the pull request diff."
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn load_submit_review_plan(request: &SubmitReviewRequest) -> Result<Value, String> {
+    let id = format!("{}-pr-{}", slug(&request.repo), slug(&request.pull_request));
+    let path = PathBuf::from("/tmp/anvil-review").join(format!("{id}.review-plan.ui.json"));
+    let text = fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "Could not load prepared review diff anchors from {}: {error}",
+            path.display()
+        )
+    })?;
+
+    serde_json::from_str(&text).map_err(|error| {
+        format!(
+            "Prepared review diff anchors are not valid JSON in {}: {error}",
+            path.display()
+        )
+    })
+}
+
+fn comment_anchor_surface_from_review_plan(
+    plan: &Value,
+) -> Result<HashMap<String, HashSet<i64>>, String> {
+    let slices = plan
+        .get("slices")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Prepared review plan does not include diff slices.".to_string())?;
+    let mut anchors: HashMap<String, HashSet<i64>> = HashMap::new();
+
+    for slice in slices {
+        for hunk in slice
+            .get("hunks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let Some(path) = hunk
+                .get("file")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+
+            for line in hunk
+                .get("lines")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if line.get("kind").and_then(Value::as_str) == Some("remove") {
+                    continue;
+                }
+
+                if let Some(new_number) = line
+                    .get("newNumber")
+                    .and_then(Value::as_i64)
+                    .filter(|value| *value > 0)
+                {
+                    anchors
+                        .entry(path.to_string())
+                        .or_default()
+                        .insert(new_number);
+                }
+            }
+        }
+    }
+
+    if anchors.is_empty() {
+        return Err("Prepared review plan does not include diff line anchors.".into());
+    }
+
+    Ok(anchors)
 }
 
 fn github_review_comments(comments: &[QueuedReviewComment]) -> Result<Vec<Value>, String> {
@@ -362,8 +486,9 @@ fn comment_line_to_string(line: &QueuedReviewCommentLine) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        bitbucket_comment_payload, comment_body, comment_line_number, github_review_body,
-        github_review_comments, submit_provider_review,
+        bitbucket_comment_payload, comment_anchor_surface_from_review_plan, comment_body,
+        comment_line_number, github_review_body, github_review_comments, submit_provider_review,
+        validate_submit_comments_against_anchors,
     };
     use crate::runtime::types::{SubmitReviewAction, SubmitReviewRequest};
     use serde_json::{json, Value};
@@ -378,6 +503,43 @@ mod tests {
             "comments": comments,
         }))
         .unwrap()
+    }
+
+    fn anchor_plan() -> Value {
+        json!({
+            "schema": "review-plan.v0",
+            "slices": [
+                {
+                    "id": "slice-1",
+                    "hunks": [
+                        {
+                            "file": "src/lib.rs",
+                            "hunkId": "src/lib.rs#h1",
+                            "lines": [
+                                {
+                                    "kind": "context",
+                                    "oldNumber": 9,
+                                    "newNumber": 9,
+                                    "text": "fn existing() {}"
+                                },
+                                {
+                                    "kind": "add",
+                                    "oldNumber": null,
+                                    "newNumber": 10,
+                                    "text": "fn added() {}"
+                                },
+                                {
+                                    "kind": "remove",
+                                    "oldNumber": 11,
+                                    "newNumber": null,
+                                    "text": "fn removed() {}"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        })
     }
 
     #[test]
@@ -528,6 +690,70 @@ mod tests {
             json!({
                 "content": { "raw": "Body-level on Bitbucket." },
             })
+        );
+    }
+
+    #[test]
+    fn diff_anchor_validation_accepts_valid_changed_line() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 10,
+                "body": "Comment on the added line."
+            }
+        ]));
+        let anchors = comment_anchor_surface_from_review_plan(&anchor_plan()).unwrap();
+
+        validate_submit_comments_against_anchors(&request.comments, &anchors).unwrap();
+    }
+
+    #[test]
+    fn diff_anchor_validation_rejects_invalid_file() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/missing.rs",
+                "line": 10,
+                "body": "Comment on the wrong file."
+            }
+        ]));
+        let anchors = comment_anchor_surface_from_review_plan(&anchor_plan()).unwrap();
+
+        assert_eq!(
+            validate_submit_comments_against_anchors(&request.comments, &anchors).unwrap_err(),
+            "Review comment 1 references file outside the pull request diff: src/missing.rs."
+        );
+    }
+
+    #[test]
+    fn diff_anchor_validation_rejects_line_outside_hunks() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 42,
+                "body": "Comment on an unchanged line outside the diff hunk."
+            }
+        ]));
+        let anchors = comment_anchor_surface_from_review_plan(&anchor_plan()).unwrap();
+
+        assert_eq!(
+            validate_submit_comments_against_anchors(&request.comments, &anchors).unwrap_err(),
+            "Review comment 1 references src/lib.rs:42, which is not in the pull request diff."
+        );
+    }
+
+    #[test]
+    fn diff_anchor_validation_rejects_missing_line() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "body": "Comment without a line."
+            }
+        ]));
+        let anchors = comment_anchor_surface_from_review_plan(&anchor_plan()).unwrap();
+
+        assert_eq!(
+            validate_submit_comments_against_anchors(&request.comments, &anchors).unwrap_err(),
+            "Review comment 1 must include a line anchor."
         );
     }
 }
