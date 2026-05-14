@@ -2,7 +2,8 @@ use super::{
     process::{bitbucket_post_json, emit_session_event, github_post_json, terminate_child},
     review::run_review_session,
     types::{
-        ReviewSessionStore, StartReviewSessionRequest, SubmitReviewAction, SubmitReviewRequest,
+        QueuedReviewComment, QueuedReviewCommentLine, ReviewSessionStore,
+        StartReviewSessionRequest, SubmitReviewAction, SubmitReviewRequest,
     },
     util::{parse_bitbucket_repo, review_lab_root, slug, unix_millis},
 };
@@ -165,6 +166,8 @@ pub(crate) fn submit_review_session(
 }
 
 fn submit_provider_review(request: &SubmitReviewRequest) -> Result<Value, String> {
+    validate_submit_comments(&request.comments)?;
+
     match request.source.as_str() {
         "github" => submit_github_review(request),
         "bitbucket" => submit_bitbucket_review(request),
@@ -179,8 +182,8 @@ fn submit_github_review(request: &SubmitReviewRequest) -> Result<Value, String> 
         SubmitReviewAction::Approve => "APPROVE",
         SubmitReviewAction::Comment => "COMMENT",
     };
-    let review_comments = github_review_comments(&request.comments);
-    let body = github_review_body(&request.comments, review_comments.len(), &request.action);
+    let review_comments = github_review_comments(&request.comments)?;
+    let body = github_review_body(&request.comments, review_comments.len(), &request.action)?;
     let payload = json!({
         "event": event,
         "body": body,
@@ -220,53 +223,69 @@ fn submit_bitbucket_review(request: &SubmitReviewRequest) -> Result<Value, Strin
     }
 }
 
-fn github_review_comments(comments: &[Value]) -> Vec<Value> {
-    comments
-        .iter()
-        .filter_map(|comment| {
-            let path = comment.get("file").and_then(Value::as_str)?;
-            let line = comment_line_number(comment)?;
-            Some(json!({
+fn validate_submit_comments(comments: &[QueuedReviewComment]) -> Result<(), String> {
+    for (index, comment) in comments.iter().enumerate() {
+        if comment_body(comment).trim().is_empty() {
+            return Err(format!("Review comment {} cannot be empty.", index + 1));
+        }
+        comment_line_number(comment)
+            .map_err(|error| format!("Review comment {} {error}", index + 1))?;
+    }
+
+    Ok(())
+}
+
+fn github_review_comments(comments: &[QueuedReviewComment]) -> Result<Vec<Value>, String> {
+    let mut review_comments = Vec::new();
+    for comment in comments {
+        if let Some((path, line)) = comment_inline_location(comment)? {
+            review_comments.push(json!({
                 "path": path,
                 "line": line,
                 "side": "RIGHT",
                 "body": comment_body(comment),
-            }))
-        })
-        .collect()
+            }));
+        }
+    }
+
+    Ok(review_comments)
 }
 
 fn github_review_body(
-    comments: &[Value],
+    comments: &[QueuedReviewComment],
     inline_count: usize,
     action: &SubmitReviewAction,
-) -> String {
+) -> Result<String, String> {
     match action {
-        SubmitReviewAction::Approve => "Reviewed with Anvil.".into(),
+        SubmitReviewAction::Approve => Ok("Reviewed with Anvil.".into()),
         SubmitReviewAction::Comment => {
-            let fallback_comments = comments
-                .iter()
-                .filter(|comment| comment_line_number(comment).is_none())
-                .map(|comment| {
-                    let file = comment
-                        .get("file")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown file");
-                    let line = comment.get("line").map(value_to_string).unwrap_or_default();
-                    format!("{file}:{line}\n\n{}", comment_body(comment))
-                })
-                .collect::<Vec<_>>();
+            let mut fallback_comments = Vec::new();
+            for comment in comments {
+                if comment_inline_location(comment)?.is_none() {
+                    let file = comment_file(comment).unwrap_or("unknown file");
+                    let line = comment
+                        .line
+                        .as_ref()
+                        .map(comment_line_to_string)
+                        .unwrap_or_default();
+                    fallback_comments.push(format!("{file}:{line}\n\n{}", comment_body(comment)));
+                } else {
+                    continue;
+                };
+            }
 
             if fallback_comments.is_empty() {
-                format!("Anvil submitted {inline_count} inline review comments.")
+                Ok(format!(
+                    "Anvil submitted {inline_count} inline review comments."
+                ))
             } else {
-                fallback_comments.join("\n\n---\n\n")
+                Ok(fallback_comments.join("\n\n---\n\n"))
             }
         }
     }
 }
 
-fn bitbucket_comment_payload(comment: &Value) -> Result<Value, String> {
+fn bitbucket_comment_payload(comment: &QueuedReviewComment) -> Result<Value, String> {
     let body = comment_body(comment);
     if body.trim().is_empty() {
         return Err("Cannot submit an empty review comment.".into());
@@ -278,10 +297,7 @@ fn bitbucket_comment_payload(comment: &Value) -> Result<Value, String> {
         },
     });
 
-    if let (Some(path), Some(line)) = (
-        comment.get("file").and_then(Value::as_str),
-        comment_line_number(comment),
-    ) {
+    if let Some((path, line)) = comment_inline_location(comment)? {
         payload["inline"] = json!({
             "path": path,
             "to": line,
@@ -291,30 +307,230 @@ fn bitbucket_comment_payload(comment: &Value) -> Result<Value, String> {
     Ok(payload)
 }
 
-fn comment_body(comment: &Value) -> String {
+fn comment_body(comment: &QueuedReviewComment) -> &str {
     comment
-        .get("draft")
-        .and_then(Value::as_str)
+        .draft
+        .as_deref()
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| comment.get("body").and_then(Value::as_str))
+        .or(comment.body.as_deref())
         .unwrap_or_default()
-        .to_string()
 }
 
-fn comment_line_number(comment: &Value) -> Option<i64> {
-    let line = comment.get("line")?;
-    if let Some(number) = line.as_i64() {
-        return (number > 0).then_some(number);
+fn comment_inline_location(comment: &QueuedReviewComment) -> Result<Option<(&str, i64)>, String> {
+    let Some(line) = comment_line_number(comment)? else {
+        return Ok(None);
+    };
+    let Some(path) = comment_file(comment) else {
+        return Ok(None);
+    };
+
+    Ok(Some((path, line)))
+}
+
+fn comment_file(comment: &QueuedReviewComment) -> Option<&str> {
+    comment
+        .file
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn comment_line_number(comment: &QueuedReviewComment) -> Result<Option<i64>, String> {
+    let Some(line) = &comment.line else {
+        return Ok(None);
+    };
+
+    let number = match line {
+        QueuedReviewCommentLine::Number(number) => *number,
+        QueuedReviewCommentLine::String(value) => value
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| "line must be a positive integer.".to_string())?,
+    };
+
+    if number <= 0 {
+        return Err("line must be a positive integer.".into());
     }
 
-    line.as_str()
-        .and_then(|value| value.parse::<i64>().ok())
-        .filter(|number| *number > 0)
+    Ok(Some(number))
 }
 
-fn value_to_string(value: &Value) -> String {
-    value
-        .as_str()
-        .map(String::from)
-        .unwrap_or_else(|| value.to_string())
+fn comment_line_to_string(line: &QueuedReviewCommentLine) -> String {
+    match line {
+        QueuedReviewCommentLine::Number(number) => number.to_string(),
+        QueuedReviewCommentLine::String(value) => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bitbucket_comment_payload, comment_body, comment_line_number, github_review_body,
+        github_review_comments, submit_provider_review,
+    };
+    use crate::runtime::types::{SubmitReviewAction, SubmitReviewRequest};
+    use serde_json::{json, Value};
+
+    fn request_with_comments(comments: Value) -> SubmitReviewRequest {
+        serde_json::from_value(json!({
+            "sessionId": "session-1",
+            "source": "github",
+            "repo": "acme/widgets",
+            "pullRequest": "12",
+            "action": "comment",
+            "comments": comments,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn submit_request_deserializes_typed_comments() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": "42",
+                "draft": "Use the checked value.",
+                "body": "ignored while draft is present"
+            },
+            {
+                "body": "Top-level review note."
+            }
+        ]));
+
+        assert_eq!(request.comments.len(), 2);
+        assert_eq!(comment_line_number(&request.comments[0]).unwrap(), Some(42));
+        assert_eq!(comment_body(&request.comments[0]), "Use the checked value.");
+        assert_eq!(comment_line_number(&request.comments[1]).unwrap(), None);
+        assert_eq!(comment_body(&request.comments[1]), "Top-level review note.");
+    }
+
+    #[test]
+    fn malformed_line_shape_fails_deserialization() {
+        let result = serde_json::from_value::<SubmitReviewRequest>(json!({
+            "sessionId": "session-1",
+            "source": "github",
+            "repo": "acme/widgets",
+            "pullRequest": "12",
+            "action": "comment",
+            "comments": [
+                {
+                    "file": "src/lib.rs",
+                    "line": { "start": 1 },
+                    "body": "This should not deserialize."
+                }
+            ],
+        }));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn github_inline_comments_require_file_and_positive_line() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 7,
+                "draft": "Inline draft comment.",
+                "body": "Inline body comment."
+            },
+            {
+                "file": "src/other.rs",
+                "body": "No line means body fallback."
+            },
+            {
+                "line": 9,
+                "body": "No file means body fallback."
+            }
+        ]));
+
+        assert_eq!(
+            github_review_comments(&request.comments).unwrap(),
+            vec![json!({
+                "path": "src/lib.rs",
+                "line": 7,
+                "side": "RIGHT",
+                "body": "Inline draft comment.",
+            })]
+        );
+    }
+
+    #[test]
+    fn github_body_preserves_comments_that_cannot_be_inline() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 7,
+                "body": "Inline comment."
+            },
+            {
+                "file": "src/other.rs",
+                "body": "No line means body fallback."
+            },
+            {
+                "line": "9",
+                "body": "No file means body fallback."
+            }
+        ]));
+
+        assert_eq!(
+            github_review_body(&request.comments, 1, &SubmitReviewAction::Comment).unwrap(),
+            "src/other.rs:\n\nNo line means body fallback.\n\n---\n\nunknown file:9\n\nNo file means body fallback."
+        );
+    }
+
+    #[test]
+    fn invalid_comment_body_or_line_fails_before_provider_submission() {
+        let empty_comment = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 7,
+                "body": "   "
+            }
+        ]));
+        assert_eq!(
+            submit_provider_review(&empty_comment).unwrap_err(),
+            "Review comment 1 cannot be empty."
+        );
+
+        let invalid_line = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 0,
+                "body": "Line zero is invalid."
+            }
+        ]));
+        assert_eq!(
+            submit_provider_review(&invalid_line).unwrap_err(),
+            "Review comment 1 line must be a positive integer."
+        );
+    }
+
+    #[test]
+    fn bitbucket_payload_uses_inline_location_only_when_complete() {
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": "12",
+                "body": "Inline on Bitbucket."
+            },
+            {
+                "file": "src/lib.rs",
+                "body": "Body-level on Bitbucket."
+            }
+        ]));
+
+        assert_eq!(
+            bitbucket_comment_payload(&request.comments[0]).unwrap(),
+            json!({
+                "content": { "raw": "Inline on Bitbucket." },
+                "inline": { "path": "src/lib.rs", "to": 12 },
+            })
+        );
+        assert_eq!(
+            bitbucket_comment_payload(&request.comments[1]).unwrap(),
+            json!({
+                "content": { "raw": "Body-level on Bitbucket." },
+            })
+        );
+    }
 }
