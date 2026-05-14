@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 
 export type ReviewPlanRisk = "high" | "medium" | "low" | string;
+export type ReviewPlanCommentSeverity = "blocking" | "question" | "check" | "nit";
 
 export type ReviewPlanSlice = {
   id?: string;
@@ -10,7 +11,7 @@ export type ReviewPlanSlice = {
   why?: string;
   files?: string[];
   hunks?: Array<{ file?: string; hunkId?: string; reason?: string; line?: number | string }>;
-  inlineComments?: Array<{ file?: string; hunkId?: string; line?: number | string; body?: string }>;
+  inlineComments?: Array<{ file?: string; hunkId?: string; line?: number | string; severity?: ReviewPlanCommentSeverity; body?: string }>;
   evidence?: string[];
   remainingQuestions?: string[];
   acceptConditions?: string[];

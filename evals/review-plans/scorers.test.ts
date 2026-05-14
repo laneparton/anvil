@@ -1,5 +1,6 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { collectFileOwnership, evaluateReviewPlan, type GoldenSpec, type ReviewPlan } from "./scorers";
+import { collectFileOwnership, evaluateReviewPlan, loadJson, type GoldenSpec, type ReviewPlan } from "./scorers";
 
 const baseGolden: GoldenSpec = {
   pr: {
@@ -167,5 +168,19 @@ describe("review-plan deterministic scorers", () => {
     );
 
     expect(result.checks.find((check) => check.name === "inlineCommentAnchors")?.status).toBe("fail");
+  });
+
+  it("passes the committed minimal-good fixture and fails the weak fixture", async () => {
+    const root = process.cwd();
+    const golden = await loadJson<GoldenSpec>(path.join(root, "evals/review-plans/golden/assistant-ui-4025.json"));
+    const good = await loadJson<ReviewPlan>(
+      path.join(root, "evals/review-plans/fixtures/assistant-ui-4025.minimal-good.review-plan.json"),
+    );
+    const weak = await loadJson<ReviewPlan>(
+      path.join(root, "evals/review-plans/fixtures/assistant-ui-4025.weak.review-plan.json"),
+    );
+
+    expect(evaluateReviewPlan(good, golden).verdict).toBe("pass");
+    expect(evaluateReviewPlan(weak, golden).verdict).toBe("fail");
   });
 });

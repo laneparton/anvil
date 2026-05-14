@@ -529,7 +529,7 @@ function matchesSourceFilter(row: NormalizedPullRequest, sourceFilter: ReviewInb
   return sourceFilter === "all" || row.source === sourceFilter;
 }
 
-function parseManualPullRequestUrl(value: string): { source: ReviewSourceId; repo: string; number: string } | undefined {
+export function parseManualPullRequestUrl(value: string): { source: ReviewSourceId; repo: string; number: string } | undefined {
   const url = parseUrl(value.trim());
   if (!url) return undefined;
 

@@ -1,0 +1,332 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://anvil.local/schemas/review-plan.v0.schema.json",
+  "title": "Anvil Review Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "pr", "slices"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "review-plan.v0"
+    },
+    "pr": {
+      "$ref": "#/definitions/pullRequest"
+    },
+    "completion": {
+      "$ref": "#/definitions/completion"
+    },
+    "slices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/slice"
+      }
+    },
+    "hiddenGroups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/hiddenGroup"
+      },
+      "default": []
+    },
+    "fallbackFileList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  },
+  "definitions": {
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "number", "title"],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "baseRef": {
+          "type": "string"
+        },
+        "headRef": {
+          "type": "string"
+        },
+        "headSha": {
+          "type": "string"
+        },
+        "changedFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "additions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deletions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reviewedFiles",
+        "totalFiles",
+        "reviewedHunks",
+        "totalHunks",
+        "blockingComments",
+        "openQuestions"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "reviewedFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewedHunks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalHunks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockingComments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "openQuestions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "risk", "why", "files"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "$ref": "#/definitions/risk"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "deferred": {
+          "type": "boolean",
+          "default": false
+        },
+        "deferReason": {
+          "type": "string"
+        },
+        "primaryRisk": {
+          "type": "string"
+        },
+        "decisionQuestion": {
+          "type": "string"
+        },
+        "whyTheseFilesTogether": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "filesReviewed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/hunk"
+          },
+          "default": []
+        },
+        "inlineComments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/inlineComment"
+          },
+          "default": []
+        },
+        "remainingQuestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "acceptConditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "commentConditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "suggestedDecision": {
+          "type": "string"
+        }
+      }
+    },
+    "hunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "hunkId", "reason"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hunkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "lines": {
+          "type": "array"
+        }
+      }
+    },
+    "inlineComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "hunkId", "line", "severity", "body"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hunkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "severity": {
+          "$ref": "#/definitions/commentSeverity"
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "hiddenGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "files"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["blocked", "needs-human", "agent-reviewed"]
+    },
+    "commentSeverity": {
+      "type": "string",
+      "enum": ["blocking", "question", "check", "nit"]
+    }
+  }
+}

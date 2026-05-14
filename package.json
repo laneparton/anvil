@@ -17,9 +17,13 @@
     "preview": "vite preview --host 127.0.0.1",
     "smoke:inbox": "cargo run --manifest-path desktop/Cargo.toml --bin review_inbox_smoke -- --filter allOpen --limit 20",
     "smoke:tauri": "scripts/tauri-smoke.sh",
-    "test:evals": "vitest run evals/review-plans/scorers.test.ts",
+    "test:evals": "vitest run evals/review-plans/*.test.ts",
+    "test:unit": "vitest run evals/review-plans ui",
+    "test:rust": "cargo test --manifest-path desktop/Cargo.toml",
+    "test:rust:e2e": "cargo test --manifest-path desktop/Cargo.toml --features e2e-testing",
     "e2e:browser": "playwright test --config e2e/playwright.config.ts --project=browser-only",
-    "e2e:tauri": "ANVIL_E2E_TAURI=1 playwright test --config e2e/playwright.tauri.config.ts --project=tauri"
+    "e2e:tauri": "ANVIL_E2E_TAURI=1 playwright test --config e2e/playwright.tauri.config.ts --project=tauri",
+    "verify": "npm run format:check && npm run lint && npm run build && npm run test:evals && npm run test:rust && npm run test:rust:e2e && npm run e2e:browser"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
@@ -42,6 +46,7 @@
     "@types/node": "^25.7.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "ajv": "^6.15.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",

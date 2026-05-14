@@ -70,6 +70,11 @@ export type UseReviewProgressResult = {
   clearProgress: () => void;
 };
 
+export type ReviewProgressSnapshot = Pick<
+  UseReviewProgressResult,
+  "slices" | "comments" | "queuedComments" | "counts"
+>;
+
 const DEFAULT_STORAGE_KEY = "review-progress";
 const COMMENT_DECISIONS: CommentDecision[] = [
   "open",
@@ -264,6 +269,53 @@ function countComments(comments: ReviewProgressComment[]) {
   };
 }
 
+export function createReviewProgressSnapshot(
+  input: ReviewPlan | Slice[],
+  state: ReviewProgressState = createEmptyState(),
+): ReviewProgressSnapshot {
+  const rawSlices = getSlices(input);
+  const reviewedSliceIdSet = new Set(state.reviewedSliceIds);
+  const slices = rawSlices.map((slice) => {
+    const comments = slice.inlineComments.map((comment, index) => {
+      const id = createCommentId(slice, comment, index);
+
+      return {
+        ...comment,
+        id,
+        sliceId: slice.id,
+        decision: state.commentDecisions[id] ?? "open",
+        draft: state.commentDrafts[id] ?? "",
+      };
+    });
+
+    return {
+      ...slice,
+      reviewed: reviewedSliceIdSet.has(slice.id),
+      comments,
+      counts: countComments(comments),
+    };
+  });
+  const comments = slices.flatMap((slice) => slice.comments);
+  const queuedComments = comments.filter((comment) => comment.decision === "converted");
+  const commentCounts = countComments(comments);
+  const reviewedSlices = slices.filter((slice) => slice.reviewed).length;
+  const totalSlices = slices.length;
+
+  return {
+    slices,
+    comments,
+    queuedComments,
+    counts: {
+      totalSlices,
+      reviewedSlices,
+      unreviewedSlices: totalSlices - reviewedSlices,
+      ...commentCounts,
+      percentReviewed:
+        totalSlices === 0 ? 0 : Math.round((reviewedSlices / totalSlices) * 100),
+    },
+  };
+}
+
 export function useReviewProgress(
   input: ReviewPlan | Slice[],
   options: UseReviewProgressOptions = {},
@@ -300,58 +352,15 @@ export function useReviewProgress(
     writeStoredState(storageKey, state);
   }, [state, storageKey]);
 
+  const { slices, comments, queuedComments, counts } = useMemo(
+    () => createReviewProgressSnapshot(rawSlices, state),
+    [rawSlices, state],
+  );
+
   const reviewedSliceIdSet = useMemo(
     () => new Set(state.reviewedSliceIds),
     [state.reviewedSliceIds],
   );
-
-  const slices = useMemo<ReviewProgressSlice[]>(() => {
-    return rawSlices.map((slice) => {
-      const comments = slice.inlineComments.map((comment, index) => {
-        const id = createCommentId(slice, comment, index);
-
-        return {
-          ...comment,
-          id,
-          sliceId: slice.id,
-          decision: state.commentDecisions[id] ?? "open",
-          draft: state.commentDrafts[id] ?? "",
-        };
-      });
-
-      return {
-        ...slice,
-        reviewed: reviewedSliceIdSet.has(slice.id),
-        comments,
-        counts: countComments(comments),
-      };
-    });
-  }, [rawSlices, reviewedSliceIdSet, state.commentDecisions, state.commentDrafts]);
-
-  const comments = useMemo(
-    () => slices.flatMap((slice) => slice.comments),
-    [slices],
-  );
-
-  const queuedComments = useMemo(
-    () => comments.filter((comment) => comment.decision === "converted"),
-    [comments],
-  );
-
-  const counts = useMemo<ReviewProgressCounts>(() => {
-    const commentCounts = countComments(comments);
-    const reviewedSlices = slices.filter((slice) => slice.reviewed).length;
-    const totalSlices = slices.length;
-
-    return {
-      totalSlices,
-      reviewedSlices,
-      unreviewedSlices: totalSlices - reviewedSlices,
-      ...commentCounts,
-      percentReviewed:
-        totalSlices === 0 ? 0 : Math.round((reviewedSlices / totalSlices) * 100),
-    };
-  }, [comments, slices]);
 
   const isSliceReviewed = useCallback(
     (sliceId: string) => reviewedSliceIdSet.has(sliceId),

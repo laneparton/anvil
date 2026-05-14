@@ -51,6 +51,7 @@
           "file": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx",
           "hunkId": "packages/react-mcp/src/hooks/useMcpOAuthCallback.tsx#callback",
           "line": 42,
+          "severity": "question",
           "body": "Verify this callback cannot redeem the same OAuth code twice during React Strict Mode double effect execution."
         }
       ]
