@@ -259,7 +259,8 @@ pub(crate) fn build_review_plan(
         ));
         failures = validate_slice_plan_contract(&planner, &context);
         if failures.is_empty() {
-            failures = critique_slice_plan(&mut client, cwd, &effort, &context, &planner, progress)?;
+            failures =
+                critique_slice_plan(&mut client, cwd, &effort, &context, &planner, progress)?;
         }
     }
 
@@ -339,9 +340,9 @@ pub(crate) fn build_review_plan(
                     .or(turn.slice_id.as_deref())
                     .ok_or_else(|| "slice reviewer returned no sliceId".to_string())?
                     .to_string();
-                let slice = slices_by_id
-                    .get(&slice_id)
-                    .ok_or_else(|| format!("slice reviewer returned unknown sliceId `{slice_id}`"))?;
+                let slice = slices_by_id.get(&slice_id).ok_or_else(|| {
+                    format!("slice reviewer returned unknown sliceId `{slice_id}`")
+                })?;
                 validate_slice_review(&result.value, slice, &context)?;
                 let plan_slice = build_plan_slice(&context, slice, Some(&result.value));
                 pending_reviews.push(result.value.clone());

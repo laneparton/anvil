@@ -1,7 +1,7 @@
 mod agent;
 mod agentic_plan;
-mod app_server;
 mod app;
+mod app_server;
 mod diff;
 mod git;
 mod metadata;

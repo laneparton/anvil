@@ -8,9 +8,12 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{self, Receiver, RecvTimeoutError},
+        Arc, Mutex,
+    },
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 pub(crate) struct StructuredAgentTurn {
@@ -38,7 +41,7 @@ pub(crate) struct AppServerNotification {
 pub(crate) struct CodexAppServerClient {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<Box<dyn Read + Send>>,
+    stdout: Receiver<Result<String, String>>,
     stderr: Arc<Mutex<Vec<u8>>>,
     next_id: u64,
 }
@@ -78,7 +81,7 @@ impl CodexAppServerClient {
         let mut client = Self {
             child,
             stdin,
-            stdout: BufReader::new(Box::new(stdout)),
+            stdout: read_stdout(stdout),
             stderr,
             next_id: 1,
         };
@@ -288,16 +291,29 @@ impl CodexAppServerClient {
         id: u64,
         mut on_notification: impl FnMut(&AppServerNotification),
     ) -> Result<Value, String> {
+        self.wait_response_with_timeout(id, REVIEW_COMMAND_TIMEOUT, |notification| {
+            on_notification(notification)
+        })
+    }
+
+    fn wait_response_with_timeout(
+        &mut self,
+        id: u64,
+        timeout: Duration,
+        mut on_notification: impl FnMut(&AppServerNotification),
+    ) -> Result<Value, String> {
         let started = Instant::now();
         loop {
-            if started.elapsed() >= REVIEW_COMMAND_TIMEOUT {
-                return Err(format!(
-                    "Codex app-server protocol timed out waiting for response id {id} after {}s.",
-                    REVIEW_COMMAND_TIMEOUT.as_secs()
-                ));
+            let elapsed = started.elapsed();
+            if elapsed >= timeout {
+                self.terminate_timeout();
+                return Err(self.timeout_error(id, timeout));
             }
 
-            let message = self.read_message()?;
+            let Some(message) = self.read_message_timeout(timeout.saturating_sub(elapsed))? else {
+                self.terminate_timeout();
+                return Err(self.timeout_error(id, timeout));
+            };
             if message.get("id").and_then(Value::as_u64) == Some(id) {
                 if let Some(error) = message.get("error") {
                     return Err(format!("Codex app-server protocol call {id} failed: {error}"));
@@ -317,17 +333,33 @@ impl CodexAppServerClient {
     }
 
     fn read_message(&mut self) -> Result<Value, String> {
-        let mut line = String::new();
-        let bytes = self
-            .stdout
-            .read_line(&mut line)
-            .map_err(|error| format!("Codex app-server protocol read failed: {error}"))?;
-        if bytes == 0 {
-            return Err(format!(
-                "Codex app-server exited before completing the protocol call.{}",
-                self.stderr_suffix()
-            ));
+        let line = self.receive_line()?;
+        self.parse_message_line(&line)
+    }
+
+    fn read_message_timeout(&mut self, timeout: Duration) -> Result<Option<Value>, String> {
+        let Some(line) = self.receive_line_timeout(timeout)? else {
+            return Ok(None);
+        };
+        self.parse_message_line(&line).map(Some)
+    }
+
+    fn receive_line(&mut self) -> Result<String, String> {
+        self.stdout
+            .recv()
+            .map_err(|_| self.exited_error())?
+            .map_err(|error| error.to_string())
+    }
+
+    fn receive_line_timeout(&mut self, timeout: Duration) -> Result<Option<String>, String> {
+        match self.stdout.recv_timeout(timeout) {
+            Ok(line) => line.map(Some),
+            Err(RecvTimeoutError::Timeout) => Ok(None),
+            Err(RecvTimeoutError::Disconnected) => Err(self.exited_error()),
         }
+    }
+
+    fn parse_message_line(&self, line: &str) -> Result<Value, String> {
         serde_json::from_str(line.trim()).map_err(|error| {
             format!(
                 "Codex app-server emitted invalid JSON-RPC: {error}. Line: {}",
@@ -341,6 +373,25 @@ impl CodexAppServerClient {
             return Err(format!("Codex app-server protocol error: {error}"));
         }
         Ok(())
+    }
+
+    fn terminate_timeout(&mut self) {
+        terminate_child(self.child.id());
+    }
+
+    fn timeout_error(&self, id: u64, timeout: Duration) -> String {
+        format!(
+            "Codex app-server protocol timed out waiting for response id {id} after {}s.{}",
+            timeout.as_secs(),
+            self.stderr_suffix()
+        )
+    }
+
+    fn exited_error(&self) -> String {
+        format!(
+            "Codex app-server exited before completing the protocol call.{}",
+            self.stderr_suffix()
+        )
     }
 
     fn stderr_suffix(&self) -> String {
@@ -540,6 +591,31 @@ fn extract_json(text: &str) -> Result<Value, String> {
     serde_json::from_str(&text[start..=end]).map_err(|error| error.to_string())
 }
 
+fn read_stdout(pipe: impl Read + Send + 'static) -> Receiver<Result<String, String>> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let mut reader = BufReader::new(pipe);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if sender.send(Ok(line)).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = sender.send(Err(format!(
+                        "Codex app-server protocol read failed: {error}"
+                    )));
+                    break;
+                }
+            }
+        }
+    });
+    receiver
+}
+
 fn read_stderr(pipe: Option<impl Read + Send + 'static>, stderr: Arc<Mutex<Vec<u8>>>) {
     thread::spawn(move || {
         let Some(mut pipe) = pipe else {
@@ -569,8 +645,16 @@ fn escape_toml_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_json, notification_from_message, PendingTurn};
+    use super::{
+        extract_json, notification_from_message, read_stderr, read_stdout, CodexAppServerClient,
+        PendingTurn,
+    };
     use serde_json::json;
+    use std::{
+        process::{Command, Stdio},
+        sync::{Arc, Mutex},
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn extracts_json_from_agent_message_deltas_when_completed_item_is_missing() {
@@ -634,5 +718,36 @@ mod tests {
             extract_json(pending.final_text().unwrap()).unwrap(),
             json!({ "schema": "final" })
         );
+    }
+
+    #[test]
+    fn wait_response_times_out_when_stdout_emits_no_line() {
+        let mut child = Command::new("sleep")
+            .arg("10")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn silent child");
+        let stdin = child.stdin.take().expect("child stdin");
+        let stdout = child.stdout.take().expect("child stdout");
+        let stderr = Arc::new(Mutex::new(Vec::new()));
+        read_stderr(child.stderr.take(), stderr.clone());
+
+        let mut client = CodexAppServerClient {
+            child,
+            stdin,
+            stdout: read_stdout(stdout),
+            stderr,
+            next_id: 1,
+        };
+
+        let started = Instant::now();
+        let error = client
+            .wait_response_with_timeout(42, Duration::from_millis(150), |_| {})
+            .expect_err("silent child should time out");
+
+        assert!(error.contains("timed out waiting for response id 42"));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }
