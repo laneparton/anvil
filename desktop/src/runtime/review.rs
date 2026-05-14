@@ -120,12 +120,16 @@ pub(crate) fn run_review_session(
         if event.event_type == "app_server.started" {
             if let Some(pid) = event.data.get("pid").and_then(Value::as_u64) {
                 app_server_pid = Some(pid as u32);
-                if let Ok(mut children) = state.children.lock() {
-                    children.insert(session_id.to_string(), pid as u32);
-                }
+                let _ = state.track_child(session_id, pid as u32);
             }
         }
-        emit_session_event(app, session_id, &event.event_type, &event.message, event.data);
+        emit_session_event(
+            app,
+            session_id,
+            &event.event_type,
+            &event.message,
+            event.data,
+        );
     };
 
     let plan_result = build_review_plan(
@@ -138,9 +142,7 @@ pub(crate) fn run_review_session(
     );
 
     if app_server_pid.is_some() {
-        if let Ok(mut children) = state.children.lock() {
-            children.remove(session_id);
-        }
+        let _ = state.untrack_child(session_id);
     }
     let plan = plan_result?;
 

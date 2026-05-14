@@ -10,6 +10,23 @@ use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, State};
 
+struct ReviewSessionCleanup {
+    state: Arc<ReviewSessionStore>,
+    session_id: String,
+}
+
+impl ReviewSessionCleanup {
+    fn new(state: Arc<ReviewSessionStore>, session_id: String) -> Self {
+        Self { state, session_id }
+    }
+}
+
+impl Drop for ReviewSessionCleanup {
+    fn drop(&mut self) {
+        let _ = self.state.cleanup_session(&self.session_id);
+    }
+}
+
 #[tauri::command]
 pub(crate) fn start_review_session(
     app: AppHandle,
@@ -39,18 +56,11 @@ pub(crate) fn start_review_session(
     let ui_path = output_root.join(format!("{id}.review-plan.ui.json"));
     let state = state.inner().clone();
     let session_id_for_thread = session_id.clone();
-    state
-        .sessions
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .insert(session_id.clone());
-    state
-        .cancelled
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .remove(&session_id);
+    state.start_session(&session_id)?;
 
     tauri::async_runtime::spawn_blocking(move || {
+        let _cleanup = ReviewSessionCleanup::new(state.clone(), session_id_for_thread.clone());
+
         emit_session_event(
             &app,
             &session_id_for_thread,
@@ -77,6 +87,10 @@ pub(crate) fn start_review_session(
         );
 
         if let Err(error) = result {
+            if state.is_cancelled(&session_id_for_thread).unwrap_or(false) {
+                return;
+            }
+
             emit_session_event(
                 &app,
                 &session_id_for_thread,
@@ -96,23 +110,7 @@ pub(crate) fn cancel_review_session(
     state: State<'_, Arc<ReviewSessionStore>>,
     session_id: String,
 ) -> Result<Value, String> {
-    let has_session = state
-        .sessions
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .contains(&session_id);
-
-    state
-        .cancelled
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .insert(session_id.clone());
-
-    let pid = state
-        .children
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .remove(&session_id);
+    let (has_session, pid) = state.cancel_session(&session_id)?;
 
     if let Some(pid) = pid {
         terminate_child(pid);
@@ -134,14 +132,13 @@ pub(crate) fn submit_review_session(
     state: State<'_, Arc<ReviewSessionStore>>,
     request: SubmitReviewRequest,
 ) -> Result<Value, String> {
-    let has_session = state
-        .sessions
-        .lock()
-        .map_err(|_| "Could not lock review session store.".to_string())?
-        .contains(&request.session_id);
-    if !has_session {
+    if request.session_id.trim().is_empty() {
+        return Err("A review session id is required.".into());
+    }
+
+    if state.is_cancelled(&request.session_id)? {
         return Err(format!(
-            "Review session '{}' was not found.",
+            "Review session '{}' was cancelled.",
             request.session_id
         ));
     }
