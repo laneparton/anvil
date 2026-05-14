@@ -84,6 +84,95 @@ pub(crate) struct ReviewSessionStore {
     pub(crate) sessions: Mutex<HashSet<String>>,
 }
 
+impl ReviewSessionStore {
+    pub(crate) fn start_session(&self, session_id: &str) -> Result<(), String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+
+        sessions.insert(session_id.to_string());
+        cancelled.remove(session_id);
+        children.remove(session_id);
+
+        Ok(())
+    }
+
+    pub(crate) fn cancel_session(&self, session_id: &str) -> Result<(bool, Option<u32>), String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+
+        let had_session = sessions.remove(session_id);
+        let was_cancelled = cancelled.contains(session_id);
+        if had_session || was_cancelled {
+            cancelled.insert(session_id.to_string());
+        }
+        let pid = children.remove(session_id);
+
+        Ok((had_session || was_cancelled, pid))
+    }
+
+    pub(crate) fn cleanup_session(&self, session_id: &str) -> Result<Option<u32>, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?;
+
+        sessions.remove(session_id);
+        cancelled.remove(session_id);
+        Ok(children.remove(session_id))
+    }
+
+    pub(crate) fn is_cancelled(&self, session_id: &str) -> Result<bool, String> {
+        self.cancelled
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())
+            .map(|cancelled| cancelled.contains(session_id))
+    }
+
+    pub(crate) fn track_child(&self, session_id: &str, pid: u32) -> Result<(), String> {
+        self.children
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())?
+            .insert(session_id.to_string(), pid);
+
+        Ok(())
+    }
+
+    pub(crate) fn untrack_child(&self, session_id: &str) -> Result<Option<u32>, String> {
+        self.children
+            .lock()
+            .map_err(|_| "Could not lock review session store.".to_string())
+            .map(|mut children| children.remove(session_id))
+    }
+}
+
 pub(crate) struct CommandOutput {
     pub(crate) status: ExitStatus,
     pub(crate) stdout: Vec<u8>,
@@ -202,4 +291,68 @@ pub(crate) struct DiffHunk {
     pub(crate) old_start: Option<u64>,
     pub(crate) new_start: Option<u64>,
     pub(crate) lines: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReviewSessionStore;
+
+    #[test]
+    fn start_session_resets_stale_state() {
+        let store = ReviewSessionStore::default();
+        store.cancelled.lock().unwrap().insert("review-1".into());
+        store.children.lock().unwrap().insert("review-1".into(), 42);
+
+        store.start_session("review-1").unwrap();
+
+        assert!(store.sessions.lock().unwrap().contains("review-1"));
+        assert!(!store.cancelled.lock().unwrap().contains("review-1"));
+        assert!(!store.children.lock().unwrap().contains_key("review-1"));
+    }
+
+    #[test]
+    fn cancel_session_removes_active_session_and_preserves_cancel_marker() {
+        let store = ReviewSessionStore::default();
+        store.start_session("review-1").unwrap();
+        store.children.lock().unwrap().insert("review-1".into(), 42);
+
+        let (had_session, pid) = store.cancel_session("review-1").unwrap();
+
+        assert!(had_session);
+        assert_eq!(pid, Some(42));
+        assert!(!store.sessions.lock().unwrap().contains("review-1"));
+        assert!(store.cancelled.lock().unwrap().contains("review-1"));
+        assert!(!store.children.lock().unwrap().contains_key("review-1"));
+
+        let (had_session, pid) = store.cancel_session("review-1").unwrap();
+        assert!(had_session);
+        assert_eq!(pid, None);
+        assert!(store.cancelled.lock().unwrap().contains("review-1"));
+    }
+
+    #[test]
+    fn cleanup_session_removes_session_cancel_marker_and_child() {
+        let store = ReviewSessionStore::default();
+        store.start_session("review-1").unwrap();
+        store.cancelled.lock().unwrap().insert("review-1".into());
+        store.children.lock().unwrap().insert("review-1".into(), 42);
+
+        let pid = store.cleanup_session("review-1").unwrap();
+
+        assert_eq!(pid, Some(42));
+        assert!(!store.sessions.lock().unwrap().contains("review-1"));
+        assert!(!store.cancelled.lock().unwrap().contains("review-1"));
+        assert!(!store.children.lock().unwrap().contains_key("review-1"));
+    }
+
+    #[test]
+    fn cancel_unknown_session_does_not_leave_stale_cancel_marker() {
+        let store = ReviewSessionStore::default();
+
+        let (had_session, pid) = store.cancel_session("review-1").unwrap();
+
+        assert!(!had_session);
+        assert_eq!(pid, None);
+        assert!(!store.cancelled.lock().unwrap().contains("review-1"));
+    }
 }
