@@ -2,36 +2,18 @@ use super::{
     process::{bitbucket_post_json, emit_session_event, github_post_json, terminate_child},
     review::run_review_session,
     types::{
-        QueuedReviewComment, QueuedReviewCommentLine, ReviewSessionStore,
-        StartReviewSessionRequest, SubmitReviewAction, SubmitReviewRequest,
+        QueuedReviewComment, QueuedReviewCommentLine, ReviewSessionRecord, ReviewSessionStatus,
+        ReviewSessionStore, StartReviewSessionRequest, SubmitReviewAction, SubmitReviewRequest,
     },
-    util::{parse_bitbucket_repo, review_lab_root, slug, unix_millis},
+    util::{parse_bitbucket_repo, review_lab_root, unix_millis},
 };
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::PathBuf,
     sync::Arc,
 };
 use tauri::{AppHandle, State};
-
-struct ReviewSessionCleanup {
-    state: Arc<ReviewSessionStore>,
-    session_id: String,
-}
-
-impl ReviewSessionCleanup {
-    fn new(state: Arc<ReviewSessionStore>, session_id: String) -> Self {
-        Self { state, session_id }
-    }
-}
-
-impl Drop for ReviewSessionCleanup {
-    fn drop(&mut self) {
-        let _ = self.state.cleanup_session(&self.session_id);
-    }
-}
 
 #[tauri::command]
 pub(crate) fn start_review_session(
@@ -55,17 +37,26 @@ pub(crate) fn start_review_session(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| format!("review-{}", unix_millis()));
-    let id = format!("{}-pr-{}", slug(&repo), slug(&request.pull_request));
-    let worktree = PathBuf::from("/tmp/review-plan").join(&id);
-    let output_root = PathBuf::from("/tmp/anvil-review");
-    let plan_path = output_root.join(format!("{id}.review-plan.codex.json"));
-    let ui_path = output_root.join(format!("{id}.review-plan.ui.json"));
+    validate_session_id(&session_id)?;
+    let worktree = std::path::PathBuf::from("/tmp/review-plan").join(&session_id);
+    let output_root = std::path::PathBuf::from("/tmp/anvil-review").join(&session_id);
+    let plan_path = output_root.join("review-plan.codex.json");
+    let ui_path = output_root.join("review-plan.ui.json");
+    let record = ReviewSessionRecord::new(
+        session_id.clone(),
+        request.source.clone(),
+        repo.clone(),
+        request.pull_request.clone(),
+        worktree.clone(),
+        plan_path.clone(),
+        ui_path.clone(),
+    );
     let state = state.inner().clone();
     let session_id_for_thread = session_id.clone();
-    state.start_session(&session_id)?;
+    state.start_session(record)?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        let _cleanup = ReviewSessionCleanup::new(state.clone(), session_id_for_thread.clone());
+        let _ = state.set_status(&session_id_for_thread, ReviewSessionStatus::Running);
 
         emit_session_event(
             &app,
@@ -92,18 +83,22 @@ pub(crate) fn start_review_session(
             &ui_path,
         );
 
-        if let Err(error) = result {
-            if state.is_cancelled(&session_id_for_thread).unwrap_or(false) {
-                return;
-            }
+        match result {
+            Ok(()) => {}
+            Err(error) => {
+                let _ = state.mark_failed(&session_id_for_thread);
+                if state.is_cancelled(&session_id_for_thread).unwrap_or(false) {
+                    return;
+                }
 
-            emit_session_event(
-                &app,
-                &session_id_for_thread,
-                "review.failed",
-                &error,
-                json!({ "error": error }),
-            );
+                emit_session_event(
+                    &app,
+                    &session_id_for_thread,
+                    "review.failed",
+                    &error,
+                    json!({ "error": error }),
+                );
+            }
         }
     });
 
@@ -116,9 +111,9 @@ pub(crate) fn cancel_review_session(
     state: State<'_, Arc<ReviewSessionStore>>,
     session_id: String,
 ) -> Result<Value, String> {
-    let (has_session, pid) = state.cancel_session(&session_id)?;
+    let (has_session, pids) = state.cancel_session(&session_id)?;
 
-    if let Some(pid) = pid {
+    for pid in pids.iter().copied() {
         terminate_child(pid);
     }
 
@@ -127,10 +122,23 @@ pub(crate) fn cancel_review_session(
         &session_id,
         "review.cancelled",
         "Review session cancellation requested.",
-        json!({ "pid": pid }),
+        json!({ "pids": pids }),
     );
 
     Ok(json!({ "sessionId": session_id, "cancelled": has_session }))
+}
+
+fn validate_session_id(session_id: &str) -> Result<(), String> {
+    if session_id.trim() != session_id
+        || session_id == "."
+        || session_id == ".."
+        || session_id.contains('/')
+        || session_id.contains('\\')
+    {
+        return Err("Review session id is not safe for artifact paths.".into());
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -142,17 +150,20 @@ pub(crate) fn submit_review_session(
         return Err("A review session id is required.".into());
     }
 
-    if state.is_cancelled(&request.session_id)? {
-        return Err(format!(
-            "Review session '{}' was cancelled.",
-            request.session_id
-        ));
-    }
-
+    validate_submit_action(&request)?;
     validate_submit_comments(&request.comments)?;
-    validate_submit_comment_anchors(&request)?;
+    let record = validate_submit_session(&state, &request)?;
+    validate_submit_comment_anchors(&record, &request)?;
 
-    let provider_result = submit_provider_review(&request)?;
+    state.set_status(&request.session_id, ReviewSessionStatus::Submitting)?;
+    let provider_result = match submit_provider_review(&request) {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = state.set_status(&request.session_id, ReviewSessionStatus::Completed);
+            return Err(error);
+        }
+    };
+    state.set_status(&request.session_id, ReviewSessionStatus::Submitted)?;
     let receipt_id = format!("receipt-{}", unix_millis());
     Ok(json!({
         "receiptId": receipt_id,
@@ -171,6 +182,7 @@ pub(crate) fn submit_review_session(
 }
 
 fn submit_provider_review(request: &SubmitReviewRequest) -> Result<Value, String> {
+    validate_submit_action(request)?;
     validate_submit_comments(&request.comments)?;
 
     match request.source.as_str() {
@@ -228,6 +240,56 @@ fn submit_bitbucket_review(request: &SubmitReviewRequest) -> Result<Value, Strin
     }
 }
 
+fn validate_submit_action(request: &SubmitReviewRequest) -> Result<(), String> {
+    match request.action {
+        SubmitReviewAction::Approve if !request.comments.is_empty() => {
+            Err("Approve submissions cannot include review comments.".into())
+        }
+        SubmitReviewAction::Comment if request.comments.is_empty() => {
+            Err("Comment submissions must include at least one review comment.".into())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_submit_session(
+    state: &ReviewSessionStore,
+    request: &SubmitReviewRequest,
+) -> Result<ReviewSessionRecord, String> {
+    let record = state.session_record(&request.session_id)?;
+    match record.status {
+        ReviewSessionStatus::Completed => {}
+        ReviewSessionStatus::Cancelled => {
+            return Err(format!(
+                "Review session '{}' was cancelled.",
+                request.session_id
+            ));
+        }
+        ReviewSessionStatus::Failed => {
+            return Err(format!("Review session '{}' failed.", request.session_id));
+        }
+        _ => {
+            return Err(format!(
+                "Review session '{}' is not ready to submit (status: {}).",
+                request.session_id,
+                record.status.as_str()
+            ));
+        }
+    }
+
+    if record.source != request.source
+        || record.repo != request.repo
+        || record.pull_request != request.pull_request
+    {
+        return Err(format!(
+            "Review submission target does not match prepared session '{}'.",
+            request.session_id
+        ));
+    }
+
+    Ok(record)
+}
+
 fn validate_submit_comments(comments: &[QueuedReviewComment]) -> Result<(), String> {
     for (index, comment) in comments.iter().enumerate() {
         if comment_body(comment).trim().is_empty() {
@@ -240,12 +302,15 @@ fn validate_submit_comments(comments: &[QueuedReviewComment]) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_submit_comment_anchors(request: &SubmitReviewRequest) -> Result<(), String> {
+fn validate_submit_comment_anchors(
+    record: &ReviewSessionRecord,
+    request: &SubmitReviewRequest,
+) -> Result<(), String> {
     if request.comments.is_empty() {
         return Ok(());
     }
 
-    let plan = load_submit_review_plan(request)?;
+    let plan = load_submit_review_plan(record)?;
     let anchors = comment_anchor_surface_from_review_plan(&plan)?;
     validate_submit_comments_against_anchors(&request.comments, &anchors)
 }
@@ -282,9 +347,8 @@ fn validate_submit_comments_against_anchors(
     Ok(())
 }
 
-fn load_submit_review_plan(request: &SubmitReviewRequest) -> Result<Value, String> {
-    let id = format!("{}-pr-{}", slug(&request.repo), slug(&request.pull_request));
-    let path = PathBuf::from("/tmp/anvil-review").join(format!("{id}.review-plan.ui.json"));
+fn load_submit_review_plan(record: &ReviewSessionRecord) -> Result<Value, String> {
+    let path = &record.ui_path;
     let text = fs::read_to_string(&path).map_err(|error| {
         format!(
             "Could not load prepared review diff anchors from {}: {error}",
@@ -488,10 +552,15 @@ mod tests {
     use super::{
         bitbucket_comment_payload, comment_anchor_surface_from_review_plan, comment_body,
         comment_line_number, github_review_body, github_review_comments, submit_provider_review,
-        validate_submit_comments_against_anchors,
+        validate_session_id, validate_submit_action, validate_submit_comment_anchors,
+        validate_submit_comments_against_anchors, validate_submit_session,
     };
-    use crate::runtime::types::{SubmitReviewAction, SubmitReviewRequest};
+    use crate::runtime::types::{
+        ReviewSessionRecord, ReviewSessionStatus, ReviewSessionStore, SubmitReviewAction,
+        SubmitReviewRequest,
+    };
     use serde_json::{json, Value};
+    use std::{fs, path::PathBuf};
 
     fn request_with_comments(comments: Value) -> SubmitReviewRequest {
         serde_json::from_value(json!({
@@ -503,6 +572,30 @@ mod tests {
             "comments": comments,
         }))
         .unwrap()
+    }
+
+    fn request_with_action(action: &str, comments: Value) -> SubmitReviewRequest {
+        serde_json::from_value(json!({
+            "sessionId": "session-1",
+            "source": "github",
+            "repo": "acme/widgets",
+            "pullRequest": "12",
+            "action": action,
+            "comments": comments,
+        }))
+        .unwrap()
+    }
+
+    fn session_record(session_id: &str, ui_path: PathBuf) -> ReviewSessionRecord {
+        ReviewSessionRecord::new(
+            session_id.to_string(),
+            "github".to_string(),
+            "acme/widgets".to_string(),
+            "12".to_string(),
+            PathBuf::from("/tmp/review-plan").join(session_id),
+            ui_path.with_file_name("review-plan.codex.json"),
+            ui_path,
+        )
     }
 
     fn anchor_plan() -> Value {
@@ -581,6 +674,150 @@ mod tests {
         }));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn session_ids_must_be_safe_for_artifact_paths() {
+        validate_session_id("review-123").unwrap();
+
+        assert_eq!(
+            validate_session_id("../review-123").unwrap_err(),
+            "Review session id is not safe for artifact paths."
+        );
+        assert_eq!(
+            validate_session_id(" review-123").unwrap_err(),
+            "Review session id is not safe for artifact paths."
+        );
+    }
+
+    #[test]
+    fn submit_action_validation_rejects_incorrect_comment_shape() {
+        let approve_with_comment = request_with_action(
+            "approve",
+            json!([
+                {
+                    "file": "src/lib.rs",
+                    "line": 10,
+                    "body": "Do not send comments with approval."
+                }
+            ]),
+        );
+        assert_eq!(
+            validate_submit_action(&approve_with_comment).unwrap_err(),
+            "Approve submissions cannot include review comments."
+        );
+
+        let empty_comment_submission = request_with_action("comment", json!([]));
+        assert_eq!(
+            validate_submit_action(&empty_comment_submission).unwrap_err(),
+            "Comment submissions must include at least one review comment."
+        );
+    }
+
+    #[test]
+    fn submit_session_validation_rejects_unknown_failed_cancelled_and_mismatch() {
+        let store = ReviewSessionStore::default();
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 10,
+                "body": "Comment on prepared diff."
+            }
+        ]));
+
+        assert_eq!(
+            validate_submit_session(&store, &request).unwrap_err(),
+            "Review session 'session-1' is not known."
+        );
+
+        let record = session_record(
+            "session-1",
+            PathBuf::from("/tmp/anvil-review/session-1/review-plan.ui.json"),
+        );
+        store.start_session(record).unwrap();
+        store
+            .set_status("session-1", ReviewSessionStatus::Failed)
+            .unwrap();
+        assert_eq!(
+            validate_submit_session(&store, &request).unwrap_err(),
+            "Review session 'session-1' failed."
+        );
+
+        store
+            .start_session(session_record(
+                "session-1",
+                PathBuf::from("/tmp/anvil-review/session-1/review-plan.ui.json"),
+            ))
+            .unwrap();
+        store.cancel_session("session-1").unwrap();
+        assert_eq!(
+            validate_submit_session(&store, &request).unwrap_err(),
+            "Review session 'session-1' was cancelled."
+        );
+
+        store
+            .start_session(session_record(
+                "session-1",
+                PathBuf::from("/tmp/anvil-review/session-1/review-plan.ui.json"),
+            ))
+            .unwrap();
+        store
+            .set_status("session-1", ReviewSessionStatus::Completed)
+            .unwrap();
+        let mut mismatched = request;
+        mismatched.pull_request = "13".to_string();
+        assert_eq!(
+            validate_submit_session(&store, &mismatched).unwrap_err(),
+            "Review submission target does not match prepared session 'session-1'."
+        );
+    }
+
+    #[test]
+    fn submit_anchor_validation_uses_completed_session_artifact_path() {
+        let root = std::env::temp_dir().join(format!(
+            "anvil-session-artifact-test-{}",
+            crate::runtime::util::unix_millis()
+        ));
+        let stale_path = root.join("stale").join("review-plan.ui.json");
+        let session_path = root.join("session-1").join("review-plan.ui.json");
+        fs::create_dir_all(stale_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(session_path.parent().unwrap()).unwrap();
+        fs::write(&stale_path, serde_json::to_string(&anchor_plan()).unwrap()).unwrap();
+        fs::write(
+            &session_path,
+            serde_json::to_string(&json!({
+                "schema": "review-plan.v0",
+                "slices": [
+                    {
+                        "id": "slice-1",
+                        "hunks": [
+                            {
+                                "file": "src/other.rs",
+                                "lines": [
+                                    { "kind": "add", "newNumber": 10, "text": "fn other() {}" }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let record = session_record("session-1", session_path);
+        let request = request_with_comments(json!([
+            {
+                "file": "src/lib.rs",
+                "line": 10,
+                "body": "This would match the stale artifact, not the session artifact."
+            }
+        ]));
+
+        assert_eq!(
+            validate_submit_comment_anchors(&record, &request).unwrap_err(),
+            "Review comment 1 references file outside the pull request diff: src/lib.rs."
+        );
     }
 
     #[test]

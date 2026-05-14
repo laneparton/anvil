@@ -4,7 +4,7 @@ use super::{
     git::{git_stdout, prepare_git_checkout},
     metadata::{bitbucket_pr_metadata, github_pr_metadata},
     process::{emit_session_event, ensure_session_active},
-    types::{ReviewSessionStore, REVIEW_COMMAND_TIMEOUT},
+    types::{ReviewSessionStatus, ReviewSessionStore, REVIEW_COMMAND_TIMEOUT},
 };
 use serde_json::{json, Value};
 use std::{fs, path::Path};
@@ -90,6 +90,8 @@ pub(crate) fn run_review_session(
         }),
     );
 
+    ensure_session_active(state, session_id)?;
+
     let patch = git_stdout(
         &checkout.path,
         &[
@@ -101,6 +103,8 @@ pub(crate) fn run_review_session(
         REVIEW_COMMAND_TIMEOUT,
     )?;
     let files = parse_patch(&patch);
+
+    ensure_session_active(state, session_id)?;
 
     emit_session_event(
         app,
@@ -132,6 +136,8 @@ pub(crate) fn run_review_session(
         );
     };
 
+    ensure_session_active(state, session_id)?;
+
     let plan_result = build_review_plan(
         &metadata,
         &checkout.base_sha,
@@ -146,9 +152,14 @@ pub(crate) fn run_review_session(
     }
     let plan = plan_result?;
 
+    ensure_session_active(state, session_id)?;
+
     let plan_text = serde_json::to_string_pretty(&plan).map_err(|error| error.to_string())?;
     fs::write(plan_path, format!("{plan_text}\n")).map_err(|error| error.to_string())?;
     fs::write(ui_path, format!("{plan_text}\n")).map_err(|error| error.to_string())?;
+
+    state.set_status(session_id, ReviewSessionStatus::Completed)?;
+    ensure_session_active(state, session_id)?;
 
     emit_session_event(
         app,
