@@ -8,12 +8,7 @@ import type { ReviewProgressComment, ReviewProgressSlice } from "@/lib/review-pr
 import { highlightTypeScriptLines, type HighlightToken } from "@/lib/syntax-highlight";
 import type { Hunk } from "@/lib/review-types";
 import { cn } from "@/lib/utils";
-import {
-  buildReviewerBrief,
-  formatCount,
-  groupHunksByFile,
-  type FileHunkGroup,
-} from "@/lib/review-workflow";
+import { buildReviewerBrief, formatCount, groupHunksByFile, type FileHunkGroup } from "@/lib/review-workflow";
 
 export function SliceReviewPanel({
   active,
@@ -187,7 +182,12 @@ function HunkView({
   selectedCommentId: string | undefined;
   onSelectComment: (commentId: string) => void;
 }) {
-  const commentsByLine = new Map(comments.map((comment) => [String(comment.line), comment]));
+  const commentsByLine = React.useMemo(() => groupCommentsByLine(comments), [comments]);
+  const newLineNumbers = React.useMemo(
+    () => new Set(hunk.lines.map((line) => line.newNumber).filter((line): line is number => line !== null)),
+    [hunk.lines],
+  );
+  const renderedCommentIds = new Set<string>();
   const sourceLines = React.useMemo(() => hunk.lines.map((line) => line.text || " "), [hunk.lines]);
   const highlightedLines = useHighlightedLines(sourceLines);
 
@@ -198,10 +198,7 @@ function HunkView({
       </div>
       <div className="overflow-x-auto bg-card">
         {hunk.lines.map((line, index) => {
-          const comment =
-            commentsByLine.get(String(line.newNumber)) ??
-            commentsByLine.get(String(line.oldNumber)) ??
-            commentsByLine.get(line.text);
+          const comment = getDiffLineComment(line, commentsByLine, newLineNumbers, renderedCommentIds);
           return (
             <React.Fragment key={`${hunk.hunkId}-${index}`}>
               <div
@@ -241,7 +238,50 @@ function HunkView({
   );
 }
 
-function InlineNote({ comment, selected, onSelect }: { comment: ReviewProgressComment; selected: boolean; onSelect: () => void }) {
+export function getDiffLineComment(
+  line: Hunk["lines"][number],
+  commentsByLine: Map<string, ReviewProgressComment[]>,
+  newLineNumbers: Set<number>,
+  renderedCommentIds: Set<string>,
+): ReviewProgressComment | undefined {
+  const candidates: string[] = [];
+  if (line.newNumber !== null) {
+    candidates.push(String(line.newNumber));
+  }
+  if (line.oldNumber !== null && !newLineNumbers.has(line.oldNumber)) {
+    candidates.push(String(line.oldNumber));
+  }
+  candidates.push(line.text);
+
+  for (const key of candidates) {
+    const comment = commentsByLine.get(key)?.find((candidate) => !renderedCommentIds.has(candidate.id));
+    if (comment) {
+      renderedCommentIds.add(comment.id);
+      return comment;
+    }
+  }
+
+  return undefined;
+}
+
+function groupCommentsByLine(comments: ReviewProgressComment[]) {
+  const grouped = new Map<string, ReviewProgressComment[]>();
+  for (const comment of comments) {
+    const key = String(comment.line);
+    grouped.set(key, [...(grouped.get(key) ?? []), comment]);
+  }
+  return grouped;
+}
+
+function InlineNote({
+  comment,
+  selected,
+  onSelect,
+}: {
+  comment: ReviewProgressComment;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const blocking = comment.severity === "blocking";
   return (
     <button

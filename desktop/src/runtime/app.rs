@@ -18,6 +18,7 @@ pub fn run() {
             super::session::cancel_review_session,
             super::session::submit_review_session,
             super::agent::open_review_agent,
+            super::external::open_external_url,
             super::process::configure_app_settings,
             super::process::load_app_settings,
             super::process::save_app_settings,

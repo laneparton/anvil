@@ -197,9 +197,7 @@ export async function listReviewInbox(request: ReviewInboxRequest): Promise<Revi
   };
 }
 
-export async function startReviewSession(
-  request: StartReviewSessionRequest,
-): Promise<StartReviewSessionResult> {
+export async function startReviewSession(request: StartReviewSessionRequest): Promise<StartReviewSessionResult> {
   try {
     return await tauriInvoke<StartReviewSessionResult>("start_review_session", { request });
   } catch (error) {
@@ -241,18 +239,18 @@ export async function cancelReviewSession(sessionId: string): Promise<void> {
   await tauriInvoke("cancel_review_session", { sessionId });
 }
 
-export async function submitReviewSession(
-  request: SubmitReviewSessionRequest,
-): Promise<SubmitReviewSessionReceipt> {
+export async function submitReviewSession(request: SubmitReviewSessionRequest): Promise<SubmitReviewSessionReceipt> {
   return tauriInvoke<SubmitReviewSessionReceipt>("submit_review_session", {
     request,
   });
 }
 
-export async function openReviewAgent(
-  request: OpenReviewAgentRequest,
-): Promise<OpenReviewAgentResult> {
+export async function openReviewAgent(request: OpenReviewAgentRequest): Promise<OpenReviewAgentResult> {
   return tauriInvoke<OpenReviewAgentResult>("open_review_agent", { request });
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  return tauriInvoke("open_external_url", { url });
 }
 
 export async function configureAppSettings(settings: AppSettingsBridge): Promise<void> {

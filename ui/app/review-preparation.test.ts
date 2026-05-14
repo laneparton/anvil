@@ -16,6 +16,7 @@ const request: PendingPrepareRequest = {
   repo: "owner/repo",
   pullRequest: "42",
   title: "Fix auth callback",
+  url: "https://github.com/owner/repo/pull/42",
 };
 
 function slice(overrides: Partial<Slice> = {}): Slice {
@@ -97,6 +98,7 @@ describe("review preparation helpers", () => {
       repo: "owner/repo",
       number: 42,
       title: "Fix auth callback",
+      url: "https://github.com/owner/repo/pull/42",
     });
     expect(created.slices[0]).toMatchObject({
       id: "auth",

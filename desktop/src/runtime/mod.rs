@@ -3,6 +3,7 @@ mod agentic_plan;
 mod app;
 mod app_server;
 mod diff;
+mod external;
 mod git;
 mod metadata;
 mod process;

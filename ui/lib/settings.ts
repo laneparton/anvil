@@ -5,6 +5,7 @@ import {
   saveNativeAppSettings,
   type ReviewAgent,
 } from "@/lib/api";
+import { isCommentTonePreset, type CommentTonePreset } from "@/lib/comment-tone";
 
 export type TerminalPreference = "Terminal" | "iTerm" | "custom";
 export type ReviewSkillMode = "default" | "custom";
@@ -20,6 +21,7 @@ export type AppSettings = {
   terminalPreference: TerminalPreference;
   customTerminalApp: string;
   preferredAgent: ReviewAgent;
+  commentTonePreset: CommentTonePreset;
   defaultPromptTemplate: string;
   reviewSkill: ReviewSkillSettings;
   env: Record<string, string>;
@@ -56,6 +58,7 @@ export const defaultAppSettings: AppSettings = {
   terminalPreference: "Terminal",
   customTerminalApp: "",
   preferredAgent: "codex",
+  commentTonePreset: "original",
   defaultPromptTemplate,
   reviewSkill: {
     mode: "default",
@@ -125,9 +128,7 @@ export const envSettingGroups: EnvSettingGroup[] = [
   {
     id: "runtime",
     title: "Runtime",
-    variables: [
-      { key: "PR_REVIEW_LAB_ROOT", label: "Review lab root", placeholder: "auto-detected" },
-    ],
+    variables: [{ key: "PR_REVIEW_LAB_ROOT", label: "Review lab root", placeholder: "auto-detected" }],
   },
 ];
 
@@ -175,6 +176,7 @@ function normalizeAppSettings(input: unknown): AppSettings {
     terminalPreference: normalizeTerminalPreference(value.terminalPreference),
     customTerminalApp: stringValue(value.customTerminalApp),
     preferredAgent: value.preferredAgent === "claude" ? "claude" : "codex",
+    commentTonePreset: isCommentTonePreset(value.commentTonePreset) ? value.commentTonePreset : "original",
     defaultPromptTemplate: stringValue(value.defaultPromptTemplate) || defaultPromptTemplate,
     reviewSkill: {
       mode: reviewSkill.mode === "custom" ? "custom" : "default",

@@ -5,6 +5,7 @@ import { QueuedCommentTray } from "@/components/review/queued-comment-tray";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { applyCommentTonePreset } from "@/lib/comment-tone";
 import { filterActionableQuestions } from "@/lib/review-questions";
 import type { CommentDecision, ReviewProgressComment, ReviewProgressSlice } from "@/lib/review-progress";
 import { resolveTerminalApp, type AppSettings } from "@/lib/settings";
@@ -39,10 +40,7 @@ export function DecisionRailPanel({
   agentLaunchState: AgentLaunchState;
   appSettings: AppSettings;
   currentComment: ReviewProgressComment | undefined;
-  handleCommentDecision: (
-    comment: ReviewProgressComment,
-    decision: Exclude<CommentDecision, "open">,
-  ) => void;
+  handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
   markActiveReviewed: () => void;
   openComments: ReviewProgressComment[];
@@ -66,6 +64,7 @@ export function DecisionRailPanel({
           comment={currentComment}
           openComments={openComments}
           selectedCommentId={selectedCommentId}
+          tonePreset={appSettings.commentTonePreset}
           onSelectComment={setSelectedCommentId}
           onMarkReviewed={markActiveReviewed}
           onSetCommentDraft={setCommentDraft}
@@ -105,9 +104,7 @@ function PendingDecisionRail({ event }: { event?: ReviewSessionEvent }) {
   return (
     <Card className="min-w-0 max-w-full overflow-hidden">
       <CardHeader className="px-3 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Current status
-        </div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current status</div>
       </CardHeader>
       <CardContent className="grid gap-3 p-3">
         <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2">
@@ -115,7 +112,8 @@ function PendingDecisionRail({ event }: { event?: ReviewSessionEvent }) {
           <span className="text-sm">Reviewing slice</span>
         </div>
         <p className="text-sm leading-6 text-muted-foreground">
-          {event?.message ?? "A focused reviewer is inspecting this slice. Decisions appear here when findings are ready."}
+          {event?.message ??
+            "A focused reviewer is inspecting this slice. Decisions appear here when findings are ready."}
         </p>
       </CardContent>
     </Card>
@@ -127,6 +125,7 @@ function DecisionRail({
   comment,
   openComments,
   selectedCommentId,
+  tonePreset,
   onSelectComment,
   onMarkReviewed,
   onSetCommentDraft,
@@ -136,6 +135,7 @@ function DecisionRail({
   comment: ReviewProgressComment | undefined;
   openComments: ReviewProgressComment[];
   selectedCommentId: string | undefined;
+  tonePreset: AppSettings["commentTonePreset"];
   onSelectComment: (commentId: string) => void;
   onMarkReviewed: () => void;
   onSetCommentDraft: (commentId: string, draft: string) => void;
@@ -145,7 +145,8 @@ function DecisionRail({
   const currentQuestion = !comment && !slice.reviewed ? actionableQuestions[0] : undefined;
   const deferredQuestion = slice.deferred && !slice.reviewed;
   const isClean = !comment && !currentQuestion;
-  const draft = comment ? comment.draft || comment.body : "";
+  const defaultDraft = comment ? applyCommentTonePreset(comment.body, tonePreset) : "";
+  const draft = comment ? comment.draft || defaultDraft : "";
 
   return (
     <Card className="min-w-0 max-w-full overflow-hidden">
@@ -166,7 +167,9 @@ function DecisionRail({
                     onClick={() => onSelectComment(candidate.id)}
                     className={cn(
                       "grid grid-cols-[1.25rem_1fr] items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs",
-                      candidate.id === selectedCommentId ? "border-primary/40 bg-primary/5" : "border-transparent hover:bg-accent",
+                      candidate.id === selectedCommentId
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-transparent hover:bg-accent",
                     )}
                   >
                     <span className="grid size-5 place-items-center rounded bg-muted text-[10px] font-semibold text-muted-foreground">
@@ -199,7 +202,9 @@ function DecisionRail({
 
             <div className="grid gap-2">
               <label className="grid gap-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">PR comment draft</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  PR comment draft
+                </span>
                 <textarea
                   value={draft}
                   onChange={(event) => onSetCommentDraft(comment.id, event.target.value)}
@@ -209,17 +214,30 @@ function DecisionRail({
               <Button
                 type="button"
                 className="w-full min-w-0 bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => onSetCommentDecision(comment, "converted")}
+                onClick={() => {
+                  if (!comment.draft) {
+                    onSetCommentDraft(comment.id, defaultDraft);
+                  }
+                  onSetCommentDecision(comment, "converted");
+                }}
               >
                 <Send className="size-4" />
                 Queue PR comment
               </Button>
               <div className="grid min-w-0 grid-cols-2 gap-2">
-                <Button type="button" className="w-full min-w-0 border-input bg-card" onClick={() => onSetCommentDecision(comment, "dismissed")}>
+                <Button
+                  type="button"
+                  className="w-full min-w-0 border-input bg-card"
+                  onClick={() => onSetCommentDecision(comment, "dismissed")}
+                >
                   <XCircle className="size-4" />
                   Dismiss
                 </Button>
-                <Button type="button" className="w-full min-w-0 border-input bg-card" onClick={() => onSetCommentDecision(comment, "resolved")}>
+                <Button
+                  type="button"
+                  className="w-full min-w-0 border-input bg-card"
+                  onClick={() => onSetCommentDecision(comment, "resolved")}
+                >
                   <CheckCircle2 className="size-4" />
                   Fixed
                 </Button>
@@ -229,12 +247,18 @@ function DecisionRail({
         ) : deferredQuestion ? (
           <>
             <div className="grid gap-2">
-              <Badge className="w-fit border-anvil-attention/30 bg-anvil-attention/10 text-anvil-attention">deferred</Badge>
+              <Badge className="w-fit border-anvil-attention/30 bg-anvil-attention/10 text-anvil-attention">
+                deferred
+              </Badge>
               <p className="break-words text-sm leading-6">
                 {slice.deferReason || currentQuestion || "Review this low-value slice later."}
               </p>
             </div>
-            <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={onMarkReviewed}>
+            <Button
+              type="button"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={onMarkReviewed}
+            >
               Acknowledge & next
             </Button>
           </>
@@ -246,7 +270,11 @@ function DecisionRail({
                 Resolve the open question in the brief before finishing this slice.
               </p>
             </div>
-            <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={onMarkReviewed}>
+            <Button
+              type="button"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={onMarkReviewed}
+            >
               Mark checked & next
             </Button>
           </>
@@ -258,10 +286,16 @@ function DecisionRail({
                 <Badge className="border-primary/25 bg-background text-primary">No inline comments</Badge>
               </div>
               <p className="text-sm leading-6 text-foreground">
-                {isClean ? "Approve or finish this slice with no comments once the brief checks pass." : "No open findings in this slice."}
+                {isClean
+                  ? "Approve or finish this slice with no comments once the brief checks pass."
+                  : "No open findings in this slice."}
               </p>
             </div>
-            <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={onMarkReviewed}>
+            <Button
+              type="button"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={onMarkReviewed}
+            >
               Finish slice: no comments
             </Button>
           </>

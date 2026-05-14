@@ -9,6 +9,7 @@ import type {
   UseReviewProgressResult,
 } from "@/lib/review-progress";
 import type { AppSettings } from "@/lib/settings";
+import type { ProviderPullRequestLink } from "@/lib/provider-links";
 import { cn } from "@/lib/utils";
 
 import { DecisionRailPanel } from "./DecisionRailPanel";
@@ -33,8 +34,10 @@ export function ReviewScreen({
   markActiveReviewed,
   onExitReview,
   onOpenSettings,
+  onOpenProvider,
   openComments,
   pendingSliceIds,
+  providerPullRequestLink,
   prepareEvent,
   progress,
   pullRequest,
@@ -58,17 +61,16 @@ export function ReviewScreen({
   commentsByHunk: Map<string, ReviewProgressComment[]>;
   currentComment: ReviewProgressComment | undefined;
   deferredSlices: ReviewProgressSlice[];
-  handleCommentDecision: (
-    comment: ReviewProgressComment,
-    decision: Exclude<CommentDecision, "open">,
-  ) => void;
+  handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
   highRiskPendingCount: number;
   markActiveReviewed: () => void;
   onExitReview: () => void;
   onOpenSettings: () => void;
+  onOpenProvider?: () => void;
   openComments: ReviewProgressComment[];
   pendingSliceIds: Set<string>;
+  providerPullRequestLink?: ProviderPullRequestLink;
   prepareEvent?: ReviewSessionEvent;
   progress: UseReviewProgressResult;
   pullRequest: string | number;
@@ -89,6 +91,8 @@ export function ReviewScreen({
       title={reviewTitle}
       onExitReview={onExitReview}
       onOpenSettings={onOpenSettings}
+      onOpenProvider={onOpenProvider}
+      providerPullRequestLink={providerPullRequestLink}
       queue={
         <ScrollArea className="border-r">
           <ReviewQueue

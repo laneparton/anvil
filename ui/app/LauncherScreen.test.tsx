@@ -7,11 +7,13 @@ describe("parseManualPullRequestUrl", () => {
       source: "github",
       repo: "owner/repo",
       number: "123",
+      url: "https://github.com/owner/repo/pull/123",
     });
     expect(parseManualPullRequestUrl("github.com/owner/repo/pull/456")).toEqual({
       source: "github",
       repo: "owner/repo",
       number: "456",
+      url: "https://github.com/owner/repo/pull/456",
     });
   });
 
@@ -20,12 +22,15 @@ describe("parseManualPullRequestUrl", () => {
       source: "bitbucket",
       repo: "workspace/repo",
       number: "7",
+      url: "https://bitbucket.org/workspace/repo/pull-requests/7",
     });
   });
 
   it("rejects unsupported hosts, non-PR paths, and non-numeric pull request ids", () => {
     expect(parseManualPullRequestUrl("https://github.com/owner/repo/issues/123")).toBeUndefined();
     expect(parseManualPullRequestUrl("https://github.example.com/owner/repo/pull/123")).toBeUndefined();
-    expect(parseManualPullRequestUrl("https://bitbucket.org/workspace/repo/pull-requests/not-a-number")).toBeUndefined();
+    expect(
+      parseManualPullRequestUrl("https://bitbucket.org/workspace/repo/pull-requests/not-a-number"),
+    ).toBeUndefined();
   });
 });

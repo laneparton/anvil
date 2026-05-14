@@ -20,6 +20,7 @@ export type PrepareState = {
 
 export type PendingPrepareRequest = Omit<StartReviewSessionRequest, "sessionId"> & {
   title?: string;
+  url?: string;
 };
 
 export type PlannedSlice = Pick<Slice, "id" | "title" | "risk" | "why" | "files">;
@@ -40,11 +41,7 @@ export function createReviewSessionId(): string {
   return `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function createReviewSessionEvent(
-  type: string,
-  message: string,
-  data?: unknown,
-): ReviewSessionEvent {
+export function createReviewSessionEvent(type: string, message: string, data?: unknown): ReviewSessionEvent {
   return {
     type,
     message,
@@ -124,6 +121,7 @@ export function createPlannedReviewPlan(
       repo: request.repo ?? current.pr.repo,
       number: Number(request.pullRequest) || current.pr.number,
       title: request.title || current.pr.title,
+      url: request.url ?? current.pr.url,
     },
     completion: {
       status: "needs-human",
@@ -155,16 +153,12 @@ export function mergeStreamingSlice(
   replaceExisting: boolean,
 ): ReviewPlan {
   const existingSlices = replaceExisting ? [] : current.slices;
-  const slices = [
-    ...existingSlices.filter((candidate) => candidate.id !== slice.id),
-    slice,
-  ];
+  const slices = [...existingSlices.filter((candidate) => candidate.id !== slice.id), slice];
   const totalFiles = new Set(slices.flatMap((candidate) => candidate.files)).size;
   const reviewedFiles = new Set(slices.flatMap((candidate) => candidate.filesReviewed)).size;
   const reviewedHunks = slices.reduce((sum, candidate) => sum + candidate.hunks.length, 0);
   const blockingComments = slices.reduce(
-    (sum, candidate) =>
-      sum + candidate.inlineComments.filter((comment) => comment.severity === "blocking").length,
+    (sum, candidate) => sum + candidate.inlineComments.filter((comment) => comment.severity === "blocking").length,
     0,
   );
   const openQuestions = slices.reduce(
@@ -178,6 +172,7 @@ export function mergeStreamingSlice(
       repo: request.repo ?? current.pr.repo,
       number: Number(request.pullRequest) || current.pr.number,
       title: request.title || current.pr.title,
+      url: request.url ?? current.pr.url,
     },
     completion: {
       status: blockingComments > 0 ? "blocked" : openQuestions > 0 ? "needs-human" : "agent-reviewed",
