@@ -1,5 +1,10 @@
 import { createTauriTest } from "@srsholmes/tauri-playwright";
 
+const settingsStore = {
+  settings: null as unknown,
+  configuredEnv: {} as Record<string, string>,
+};
+
 const mockInboxRows = [
   {
     source: "github",
@@ -44,9 +49,38 @@ export const { test, expect } = createTauriTest({
   startTimeout: 120,
   ipcContext: {
     mockInboxRows,
+    settingsStore,
   },
   ipcMocks: {
-    configure_app_settings: () => null,
+    configure_app_settings: (args: unknown) => {
+      const settings = typeof args === "object" && args !== null ? (args as { settings?: unknown }).settings : undefined;
+      const env = typeof settings === "object" && settings !== null ? (settings as { env?: unknown }).env : undefined;
+      const nextEnv: Record<string, string> = {};
+      if (typeof env === "object" && env !== null) {
+        for (const [key, value] of Object.entries(env)) {
+          const envKey = key.trim();
+          const envValue = typeof value === "string" ? value.trim() : "";
+          if (envKey && envValue) {
+            nextEnv[envKey] = envValue;
+          }
+        }
+      }
+      settingsStore.configuredEnv = nextEnv;
+      return null;
+    },
+    load_app_settings: () => settingsStore.settings,
+    save_app_settings: (args: unknown) => {
+      const payload = typeof args === "object" && args !== null ? (args as { payload?: unknown }).payload : undefined;
+      settingsStore.settings = typeof payload === "object" && payload !== null
+        ? (payload as { settings?: unknown }).settings ?? null
+        : null;
+      return null;
+    },
+    reset_app_settings: () => {
+      settingsStore.settings = null;
+      settingsStore.configuredEnv = {};
+      return null;
+    },
     list_review_inbox: (args: unknown) => {
       const request = typeof args === "object" && args !== null ? (args as { request?: unknown }).request : undefined;
       const providersValue = typeof request === "object" && request !== null ? (request as { providers?: unknown }).providers : undefined;

@@ -97,12 +97,52 @@ test("settings screen saves handoff and provider configuration", async ({ tauriP
   await tauriPage.getByRole("button", { name: "Claude", exact: true }).click();
   await tauriPage.getByTestId("advanced-settings-toggle").click();
   await tauriPage.getByTestId("env-BITBUCKET_WORKSPACE").fill("workspace");
+
+  await clearCapturedInvokes(tauriPage);
   await tauriPage.getByTestId("save-settings").click();
 
   await expect(tauriPage.getByText("Saved")).toBeVisible();
-  const saved = await tauriPage.evaluate(() => window.localStorage.getItem("anvil:app-settings:v1"));
-  expect(saved).not.toContain("GH_TOKEN");
-  expect(saved).toContain("workspace");
-  expect(saved).toContain("BITBUCKET_PINNED_REPOS");
-  expect(saved).toContain("BITBUCKET_INBOX_REPO_LIMIT");
+  const calls = await getCapturedInvokes(tauriPage);
+  const saveCalls = calls.filter((call) => call.cmd === "save_app_settings");
+  expect(saveCalls).toHaveLength(1);
+
+  const savedPayload = saveCalls[0].args.payload;
+  expect(savedPayload).toMatchObject({
+    settings: {
+      enabledProviders: {
+        github: true,
+        bitbucket: true,
+      },
+      terminalPreference: "custom",
+      customTerminalApp: "iTerm",
+      preferredAgent: "claude",
+      env: expect.objectContaining({
+        BITBUCKET_PINNED_REPOS: "workspace/example-service",
+        BITBUCKET_WORKSPACE: "workspace",
+        BITBUCKET_INBOX_REPO_LIMIT: "20",
+      }),
+    },
+  });
+
+  const serializedPayload = JSON.stringify(savedPayload);
+  expect(serializedPayload).not.toContain("GH_TOKEN");
+  expect(serializedPayload).not.toContain("GITHUB_TOKEN");
+  expect(serializedPayload).not.toContain("BITBUCKET_API_TOKEN");
+  expect(serializedPayload).not.toContain("BITBUCKET_ACCESS_TOKEN");
+  expect(serializedPayload).not.toContain("BITBUCKET_APP_PASSWORD");
+
+  const configureCalls = calls.filter((call) => call.cmd === "configure_app_settings");
+  expect(configureCalls).toContainEqual(
+    expect.objectContaining({
+      args: {
+        settings: {
+          env: expect.objectContaining({
+            BITBUCKET_PINNED_REPOS: "workspace/example-service",
+            BITBUCKET_WORKSPACE: "workspace",
+            BITBUCKET_INBOX_REPO_LIMIT: "20",
+          }),
+        },
+      },
+    }),
+  );
 });
