@@ -1,4 +1,10 @@
-import type { ReviewAgent } from "@/lib/api";
+import {
+  isTauriRuntime,
+  loadNativeAppSettings,
+  resetNativeAppSettings,
+  saveNativeAppSettings,
+  type ReviewAgent,
+} from "@/lib/api";
 
 export type TerminalPreference = "Terminal" | "iTerm" | "custom";
 export type ReviewSkillMode = "default" | "custom";
@@ -99,7 +105,7 @@ export const envSettingGroups: EnvSettingGroup[] = [
         key: "BITBUCKET_APP_PASSWORD",
         label: "App password",
         secret: true,
-        help: "Use environment or Keychain-backed storage later, not localStorage.",
+        help: "Use environment or Keychain-backed storage later, not local app settings.",
       },
       { key: "BITBUCKET_GIT_USERNAME", label: "Git username", placeholder: "x-token-auth" },
     ],
@@ -125,28 +131,22 @@ export const envSettingGroups: EnvSettingGroup[] = [
   },
 ];
 
-const storageKey = "anvil:app-settings:v1";
+export async function loadAppSettings(): Promise<AppSettings> {
+  if (!isTauriRuntime()) return defaultAppSettings;
 
-export function loadAppSettings(): AppSettings {
-  if (typeof window === "undefined") {
-    return defaultAppSettings;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return defaultAppSettings;
-    return normalizeAppSettings(JSON.parse(raw));
-  } catch {
-    return defaultAppSettings;
-  }
+  const storedSettings = await loadNativeAppSettings();
+  if (!storedSettings) return defaultAppSettings;
+  return normalizeAppSettings(storedSettings);
 }
 
-export function saveAppSettings(settings: AppSettings) {
-  window.localStorage.setItem(storageKey, JSON.stringify(normalizeAppSettings(settings)));
+export async function saveAppSettings(settings: AppSettings): Promise<AppSettings> {
+  const normalizedSettings = normalizeAppSettings(settings);
+  await saveNativeAppSettings(normalizedSettings);
+  return normalizedSettings;
 }
 
-export function resetAppSettings(): AppSettings {
-  window.localStorage.removeItem(storageKey);
+export async function resetAppSettings(): Promise<AppSettings> {
+  await resetNativeAppSettings();
   return defaultAppSettings;
 }
 

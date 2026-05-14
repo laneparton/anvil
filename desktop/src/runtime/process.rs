@@ -1,21 +1,22 @@
 use super::{
     types::{
-        AppSettingsPayload, CommandOutput, ReviewSessionStore, API_COMMAND_TIMEOUT,
-        LIST_COMMAND_TIMEOUT,
+        AppSettingsPayload, CommandOutput, ReviewSessionStore, StoredAppSettingsPayload,
+        API_COMMAND_TIMEOUT, LIST_COMMAND_TIMEOUT,
     },
     util::unix_millis,
 };
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
+    fs,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_http::reqwest::blocking::Client;
 
 static CONFIG_OVERRIDES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -32,6 +33,67 @@ pub(crate) fn configure_app_settings(settings: AppSettingsPayload) -> Result<(),
     *config.lock().map_err(|error| error.to_string())? = overrides;
 
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn load_app_settings(app: AppHandle) -> Result<Option<Value>, String> {
+    let path = app_settings_path(&app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read app settings at {}: {error}", path.display()))?;
+    serde_json::from_str(&raw).map(Some).map_err(|error| {
+        format!(
+            "Could not parse app settings at {}: {error}",
+            path.display()
+        )
+    })
+}
+
+#[tauri::command]
+pub(crate) fn save_app_settings(
+    app: AppHandle,
+    payload: StoredAppSettingsPayload,
+) -> Result<(), String> {
+    let path = app_settings_path(&app)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Could not resolve parent directory for {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "Could not create app settings directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let raw = serde_json::to_string_pretty(&payload.settings).map_err(|error| error.to_string())?;
+    fs::write(&path, format!("{raw}\n")).map_err(|error| {
+        format!(
+            "Could not write app settings at {}: {error}",
+            path.display()
+        )
+    })
+}
+
+#[tauri::command]
+pub(crate) fn reset_app_settings(app: AppHandle) -> Result<(), String> {
+    let path = app_settings_path(&app)?;
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Could not remove app settings at {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn app_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|dir| dir.join("settings.json"))
+        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn emit_session_event(

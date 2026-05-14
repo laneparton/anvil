@@ -544,6 +544,7 @@ Required planning contract:
 - decisionQuestion: each slice must answer one reviewer decision question.
 - primaryRisk: each slice must name one dominant risk. If there are multiple unrelated dominant risks, split the slice.
 - whyTheseFilesTogether: explain the shared invariant or code path that makes the files belong together.
+- why: describe the user-visible behavior, invariant, or failure mode the reviewer must understand. Do not list files one by one or restate hunk counts.
 - accept/comment conditions: each slice must include draft acceptConditions and commentConditions for the reviewer to refine.
 - Every changed file must appear in exactly one slice. Do not omit support files; put them in a low-risk support slice if needed.
 - Avoid giant catch-all slices. If unrelated concerns appear in one package, split them.
@@ -575,6 +576,7 @@ Repair rules:
 - Every changed file must appear exactly once.
 - Split slices when a bucket contains multiple independent review decisions or multiple unrelated dominant risks.
 - Keep files together only when whyTheseFilesTogether can name a shared invariant, code path, API contract, or proof obligation.
+- Rewrite why fields that only enumerate files, hunk ids, or counts. A useful why explains the behavior, invariant, or failure mode under review.
 - Do not encode repo-specific or PR-specific golden answers; infer boundaries from changed files and hunk headers.
 
 Generic validation failures:

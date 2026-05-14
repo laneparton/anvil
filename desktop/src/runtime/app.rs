@@ -16,7 +16,10 @@ pub fn run() {
             super::session::cancel_review_session,
             super::session::submit_review_session,
             super::agent::open_review_agent,
-            super::process::configure_app_settings
+            super::process::configure_app_settings,
+            super::process::load_app_settings,
+            super::process::save_app_settings,
+            super::process::reset_app_settings
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

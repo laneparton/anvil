@@ -55,6 +55,12 @@ pub(crate) struct AppSettingsPayload {
     pub(crate) env: HashMap<String, String>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StoredAppSettingsPayload {
+    pub(crate) settings: Value,
+}
+
 #[derive(Default)]
 pub(crate) struct ReviewSessionStore {
     pub(crate) children: Mutex<HashMap<String, u32>>,

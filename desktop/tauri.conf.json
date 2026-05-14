@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Anvil",
   "version": "0.1.0",
-  "identifier": "dev.anvil.review",
+  "identifier": "anvil",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
     "devUrl": "http://127.0.0.1:5173",
