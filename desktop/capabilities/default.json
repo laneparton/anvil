@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Allow the main desktop window to use the Tauri core APIs required by the review runtime.",
   "windows": ["main"],
-  "permissions": ["core:event:default"]
+  "permissions": ["core:event:default", "playwright:default"]
 }
