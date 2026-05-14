@@ -48,10 +48,17 @@ pub(crate) struct CodexAppServerClient {
 
 impl CodexAppServerClient {
     pub(crate) fn spawn() -> Result<Self, String> {
-        let mut args = vec!["app-server".to_string(), "--listen".to_string(), "stdio://".to_string()];
+        let mut args = vec![
+            "app-server".to_string(),
+            "--listen".to_string(),
+            "stdio://".to_string(),
+        ];
         if let Some(effort) = config_var("ANVIL_REVIEW_REASONING_EFFORT") {
             args.push("-c".into());
-            args.push(format!("model_reasoning_effort=\"{}\"", escape_toml_string(&effort)));
+            args.push(format!(
+                "model_reasoning_effort=\"{}\"",
+                escape_toml_string(&effort)
+            ));
         }
 
         let mut child = Command::new("codex")
@@ -99,12 +106,15 @@ impl CodexAppServerClient {
         mut on_notification: impl FnMut(&AppServerNotification),
     ) -> Result<StructuredAgentTurnResult, String> {
         let started = Instant::now();
-        let thread_id = self.start_thread(&turn.cwd, |notification| on_notification(notification))?;
-        let turn_id = self.start_turn(&thread_id, turn, |notification| on_notification(notification))?;
+        let thread_id =
+            self.start_thread(&turn.cwd, |notification| on_notification(notification))?;
+        let turn_id = self.start_turn(&thread_id, turn, |notification| {
+            on_notification(notification)
+        })?;
         let mut pending = PendingTurn::new(&thread_id, &turn_id);
 
         loop {
-            let message = self.read_message()?;
+            let message = self.read_turn_message(started, REVIEW_COMMAND_TIMEOUT, &turn.phase)?;
             if let Some(notification) = notification_from_message(&message) {
                 pending.handle_notification(&notification)?;
                 on_notification(&notification);
@@ -135,7 +145,12 @@ impl CodexAppServerClient {
         turns: &[StructuredAgentTurn],
         concurrency: usize,
         mut on_started: impl FnMut(&StructuredAgentTurn, &str, &str, usize, usize),
-        mut on_ready: impl FnMut(&StructuredAgentTurn, StructuredAgentTurnResult, usize, usize) -> Result<(), String>,
+        mut on_ready: impl FnMut(
+            &StructuredAgentTurn,
+            StructuredAgentTurnResult,
+            usize,
+            usize,
+        ) -> Result<(), String>,
         mut on_notification: impl FnMut(&StructuredAgentTurn, &AppServerNotification),
     ) -> Result<(), String> {
         let total = turns.len();
@@ -169,7 +184,10 @@ impl CodexAppServerClient {
                     return Err(error);
                 }
                 on_started(turn, &thread_id, &turn_id, next + 1, total);
-                pending.insert(turn_id.clone(), (next, Instant::now(), PendingTurn::new(&thread_id, &turn_id)));
+                pending.insert(
+                    turn_id.clone(),
+                    (next, Instant::now(), PendingTurn::new(&thread_id, &turn_id)),
+                );
                 next += 1;
                 emit_completed_pending(&mut pending, turns, &mut completed, total, &mut on_ready)?;
             }
@@ -179,7 +197,20 @@ impl CodexAppServerClient {
                 break;
             }
 
-            let message = self.read_message()?;
+            let Some(timeout) = next_pending_timeout(&pending, REVIEW_COMMAND_TIMEOUT) else {
+                self.terminate_timeout();
+                return Err(
+                    "Codex app-server turn timed out with no pending turn deadline.".into(),
+                );
+            };
+            let Some(message) = self.read_message_timeout(timeout)? else {
+                self.terminate_timeout();
+                return Err(next_pending_timeout_error(
+                    &pending,
+                    turns,
+                    REVIEW_COMMAND_TIMEOUT,
+                ));
+            };
             if let Some(notification) = notification_from_message(&message) {
                 if let Some(turn_id) = notification_turn_id(&notification) {
                     if let Some((index, _, _)) = pending.get(&turn_id) {
@@ -237,7 +268,9 @@ impl CodexAppServerClient {
             .and_then(|thread| thread.get("id"))
             .and_then(Value::as_str)
             .map(str::to_string)
-            .ok_or_else(|| format!("Codex app-server thread/start returned an unexpected response: {response}"))
+            .ok_or_else(|| {
+                format!("Codex app-server thread/start returned an unexpected response: {response}")
+            })
     }
 
     fn start_turn(
@@ -266,7 +299,9 @@ impl CodexAppServerClient {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .map(str::to_string)
-            .ok_or_else(|| format!("Codex app-server turn/start returned an unexpected response: {response}"))
+            .ok_or_else(|| {
+                format!("Codex app-server turn/start returned an unexpected response: {response}")
+            })
     }
 
     fn send_request(&mut self, method: &str, params: Value) -> Result<u64, String> {
@@ -316,12 +351,13 @@ impl CodexAppServerClient {
             };
             if message.get("id").and_then(Value::as_u64) == Some(id) {
                 if let Some(error) = message.get("error") {
-                    return Err(format!("Codex app-server protocol call {id} failed: {error}"));
+                    return Err(format!(
+                        "Codex app-server protocol call {id} failed: {error}"
+                    ));
                 }
-                return message
-                    .get("result")
-                    .cloned()
-                    .ok_or_else(|| format!("Codex app-server response {id} did not include `result`: {message}"));
+                return message.get("result").cloned().ok_or_else(|| {
+                    format!("Codex app-server response {id} did not include `result`: {message}")
+                });
             }
 
             if let Some(notification) = notification_from_message(&message) {
@@ -332,11 +368,6 @@ impl CodexAppServerClient {
         }
     }
 
-    fn read_message(&mut self) -> Result<Value, String> {
-        let line = self.receive_line()?;
-        self.parse_message_line(&line)
-    }
-
     fn read_message_timeout(&mut self, timeout: Duration) -> Result<Option<Value>, String> {
         let Some(line) = self.receive_line_timeout(timeout)? else {
             return Ok(None);
@@ -344,11 +375,24 @@ impl CodexAppServerClient {
         self.parse_message_line(&line).map(Some)
     }
 
-    fn receive_line(&mut self) -> Result<String, String> {
-        self.stdout
-            .recv()
-            .map_err(|_| self.exited_error())?
-            .map_err(|error| error.to_string())
+    fn read_turn_message(
+        &mut self,
+        started: Instant,
+        timeout: Duration,
+        phase: &str,
+    ) -> Result<Value, String> {
+        let elapsed = started.elapsed();
+        if elapsed >= timeout {
+            self.terminate_timeout();
+            return Err(self.turn_timeout_error(phase, timeout));
+        }
+
+        let Some(message) = self.read_message_timeout(timeout.saturating_sub(elapsed))? else {
+            self.terminate_timeout();
+            return Err(self.turn_timeout_error(phase, timeout));
+        };
+
+        Ok(message)
     }
 
     fn receive_line_timeout(&mut self, timeout: Duration) -> Result<Option<String>, String> {
@@ -382,6 +426,14 @@ impl CodexAppServerClient {
     fn timeout_error(&self, id: u64, timeout: Duration) -> String {
         format!(
             "Codex app-server protocol timed out waiting for response id {id} after {}s.{}",
+            timeout.as_secs(),
+            self.stderr_suffix()
+        )
+    }
+
+    fn turn_timeout_error(&self, phase: &str, timeout: Duration) -> String {
+        format!(
+            "Codex app-server turn for phase `{phase}` timed out after {}s with no completed response.{}",
             timeout.as_secs(),
             self.stderr_suffix()
         )
@@ -506,11 +558,18 @@ fn emit_completed_pending(
     turns: &[StructuredAgentTurn],
     completed: &mut usize,
     total: usize,
-    on_ready: &mut impl FnMut(&StructuredAgentTurn, StructuredAgentTurnResult, usize, usize) -> Result<(), String>,
+    on_ready: &mut impl FnMut(
+        &StructuredAgentTurn,
+        StructuredAgentTurnResult,
+        usize,
+        usize,
+    ) -> Result<(), String>,
 ) -> Result<(), String> {
     let completed_ids = pending
         .iter()
-        .filter_map(|(turn_id, (_, _, pending_turn))| pending_turn.completed.then_some(turn_id.clone()))
+        .filter_map(|(turn_id, (_, _, pending_turn))| {
+            pending_turn.completed.then_some(turn_id.clone())
+        })
         .collect::<Vec<_>>();
 
     for turn_id in completed_ids {
@@ -535,6 +594,36 @@ fn emit_completed_pending(
     }
 
     Ok(())
+}
+
+fn next_pending_timeout(
+    pending: &HashMap<String, (usize, Instant, PendingTurn)>,
+    timeout: Duration,
+) -> Option<Duration> {
+    pending
+        .values()
+        .map(|(_, started, _)| timeout.saturating_sub(started.elapsed()))
+        .min()
+}
+
+fn next_pending_timeout_error(
+    pending: &HashMap<String, (usize, Instant, PendingTurn)>,
+    turns: &[StructuredAgentTurn],
+    timeout: Duration,
+) -> String {
+    let Some((_, (index, _, pending_turn))) = pending
+        .iter()
+        .min_by_key(|(_, (_, started, _))| timeout.saturating_sub(started.elapsed()))
+    else {
+        return "Codex app-server turn timed out with no pending turn.".into();
+    };
+
+    format!(
+        "Codex app-server turn `{}` for phase `{}` timed out after {}s with no completed response.",
+        pending_turn.turn_id,
+        turns[*index].phase,
+        timeout.as_secs()
+    )
 }
 
 fn notification_turn_id(notification: &AppServerNotification) -> Option<String> {
