@@ -204,8 +204,8 @@ function HunkView({
               <div
                 className={cn(
                   "grid min-w-full grid-cols-[48px_48px_24px_minmax(0,1fr)] font-mono text-xs leading-6",
-                  line.kind === "add" && "bg-primary/10",
-                  line.kind === "remove" && "bg-destructive/10",
+                  line.kind === "add" && "bg-anvil-diff-add",
+                  line.kind === "remove" && "bg-anvil-diff-remove",
                 )}
               >
                 <span className="select-none pr-2 text-right text-muted-foreground">{line.oldNumber ?? ""}</span>

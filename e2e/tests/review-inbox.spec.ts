@@ -6,10 +6,19 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
 
   await expect(tauriPage.getByTestId("review-inbox")).toBeVisible();
   await expect(tauriPage.getByTestId("review-inbox-status")).toContainText(/31 visible|Loading/);
-  await expect(tauriPage.getByText("Tighten review inbox behavior")).toBeVisible();
-  const firstBitbucketRow = tauriPage.locator('button:has-text("Bitbucket workspace smoke 1")').first();
+  await expect(tauriPage.getByRole("button", { name: /Recommended next.*1/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(tauriPage.getByRole("button", { name: /Created by me.*30/ })).toHaveAttribute("aria-expanded", "true");
+  const allOpenGroup = tauriPage.getByRole("button", { name: /All open.*31/ });
+  await expect(allOpenGroup).toHaveAttribute("aria-expanded", "false");
+
+  const githubRow = tauriPage.getByRole("button", { name: /Tighten review inbox behavior/ });
+  await expect(githubRow).toBeVisible();
+  const firstBitbucketRow = tauriPage.getByRole("button", {
+    name: "Bitbucket workspace smoke 1 workspace/example #2 L lane today open",
+  });
   await expect(firstBitbucketRow).toBeVisible();
   await expect(firstBitbucketRow).not.toContainText("? files");
+  await expect(tauriPage.getByTestId("review-preview-title")).toContainText("Tighten review inbox behavior");
 
   await tauriPage.getByTestId("open-manual-pr").click();
   await expect(tauriPage.getByRole("dialog", { name: "Open PR manually" })).toBeVisible();
@@ -21,21 +30,19 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
   const listCanScroll = await tauriPage.getByTestId("pull-request-list").evaluate((element) => element.scrollHeight > element.clientHeight);
   expect(listCanScroll).toBe(true);
 
-  await tauriPage.getByTestId("inbox-filter-needsReview").click();
-  await expect(tauriPage.getByText("Tighten review inbox behavior")).toBeVisible();
-  await expect(firstBitbucketRow).toBeHidden();
+  await firstBitbucketRow.click();
+  await expect(tauriPage.getByTestId("review-preview-title")).toContainText("Bitbucket workspace smoke 1");
 
-  await tauriPage.getByTestId("inbox-filter-createdByMe").click();
-  await expect(firstBitbucketRow).toBeVisible();
-  await expect(tauriPage.getByText("Tighten review inbox behavior")).toBeHidden();
-
-  await tauriPage.getByTestId("inbox-filter-allOpen").click();
-  await expect(tauriPage.getByTestId("pull-request-row")).toHaveCount(31);
+  await allOpenGroup.click();
+  await expect(allOpenGroup).toHaveAttribute("aria-expanded", "true");
+  await allOpenGroup.click();
+  await expect(allOpenGroup).toHaveAttribute("aria-expanded", "false");
 
   await clearCapturedInvokes(tauriPage);
   await tauriPage.getByRole("button", { name: "Bitbucket 30" }).click();
   await expect(firstBitbucketRow).toBeVisible();
-  await expect(tauriPage.getByText("Tighten review inbox behavior")).toBeHidden();
+  await expect(githubRow).toBeHidden();
+  await expect(tauriPage.getByTestId("review-inbox-status")).toContainText("30 visible");
   const calls = await getCapturedInvokes(tauriPage);
   expect(calls.filter((call) => call.cmd === "list_review_inbox")).toHaveLength(0);
 });

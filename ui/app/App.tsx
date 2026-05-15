@@ -1,6 +1,12 @@
 import * as React from "react";
 
-import { LauncherScreen, type ReviewInboxPullRequest } from "@/app/LauncherScreen";
+import type { ReviewInboxPullRequest } from "@/app/LauncherScreen";
+import {
+  ExperiencePrototype,
+  PreparingReviewPrototype,
+  ReviewQueuePrototype,
+  RuntimeReviewQueueWorkbench,
+} from "@/app/ExperiencePrototype";
 import { PreparingScreen } from "@/app/PreparingScreen";
 import { ReviewScreen } from "@/app/ReviewScreen";
 import { SettingsScreen } from "@/app/SettingsScreen";
@@ -53,6 +59,17 @@ const emptyReviewPlan: ReviewPlan = {
 };
 
 export function App() {
+  if (typeof window !== "undefined") {
+    const prototype = new URLSearchParams(window.location.search).get("prototype");
+    if (prototype === "review-queue") return <ReviewQueuePrototype />;
+    if (prototype === "preparing-review") return <PreparingReviewPrototype />;
+    if (prototype === "decision-flow") return <ExperiencePrototype />;
+  }
+
+  return <RuntimeApp />;
+}
+
+function RuntimeApp() {
   const [stage, setStage] = React.useState<AppStage>("launcher");
   const [activeId, setActiveId] = React.useState<string | undefined>(emptyReviewPlan.slices[0]?.id);
   const [selectedCommentId, setSelectedCommentId] = React.useState<string | undefined>();
@@ -254,7 +271,7 @@ export function App() {
 
   if (stage === "launcher") {
     return (
-      <LauncherScreen
+      <RuntimeReviewQueueWorkbench
         pullRequests={reviewInboxRows}
         selectedRowId={selectedPullRequest}
         activeFilter={reviewInboxFilter}
@@ -263,12 +280,27 @@ export function App() {
         loading={launcherLoading}
         refreshing={launcherRefreshing}
         error={launcherError}
-        onSelectRow={(_, pullRequest) => selectInboxRow(pullRequest)}
+        providersEnabled={
+          settingsLoaded &&
+          (appSettings.enabledProviders.github || appSettings.enabledProviders.bitbucket)
+        }
+        onSelectRow={selectInboxRow}
         onActiveFilterChange={changeActiveFilter}
         onSourceFilterChange={changeSourceFilter}
         onSearchQueryChange={setReviewInboxSearch}
         onRefresh={refreshInbox}
         onOpenSettings={openSettings}
+        onOpenProvider={(pullRequest) => {
+          const link = resolveProviderPullRequestLink({
+            source: normalizeReviewSource(pullRequest.source) ?? selectedSource,
+            repo: pullRequest.repo,
+            pullRequest: getReviewPullRequestNumber(pullRequest) ?? "",
+            preferredUrls: [pullRequest.url],
+          });
+          if (link) {
+            void openProviderPullRequestUrl(link.url);
+          }
+        }}
         onPrepare={(pullRequest) => {
           const target = pullRequest ?? selectedInboxRow;
           preparePullRequest(target, {
