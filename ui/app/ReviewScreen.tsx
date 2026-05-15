@@ -1,4 +1,4 @@
-import type { ReviewAgent, ReviewSessionEvent } from "@/lib/api";
+import type { ReviewAgent, ReviewSessionEvent, SubmitReviewAction } from "@/lib/api";
 import type { ProviderPullRequestLink } from "@/lib/provider-links";
 import type {
   CommentDecision,
@@ -72,7 +72,7 @@ export function ReviewScreen({
   selectedCommentId: string | undefined;
   setActiveId: (activeId: string) => void;
   setSelectedCommentId: (commentId: string) => void;
-  submitReview: () => void;
+  submitReview: (actionOverride?: SubmitReviewAction) => void;
   submitState: SubmitState;
 }) {
   return (

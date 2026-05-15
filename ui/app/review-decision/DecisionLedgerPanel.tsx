@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, MessageSquarePlus, Minus } from "lucide-react";
+import { CheckCircle2, CircleAlert, Minus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { ReviewProgressComment, ReviewProgressSlice } from "@/lib/review-progress";
@@ -14,24 +14,24 @@ type LedgerRow = {
 
 type DecisionLedgerPanelProps = {
   activeId: string;
+  deferredSlices: ReviewProgressSlice[];
   reviewComplete: boolean;
   slices: ReviewProgressSlice[];
   queuedComments: ReviewProgressComment[];
+  summaryActive: boolean;
   onSelect: (sliceId: string) => void;
-  onSubmitReview: () => void;
-  submitDisabled: boolean;
-  submitLabel: string;
+  onSelectSummary: () => void;
 };
 
 export function DecisionLedgerPanel({
   activeId,
+  deferredSlices,
   reviewComplete,
   slices,
   queuedComments,
+  summaryActive,
   onSelect,
-  onSubmitReview,
-  submitDisabled,
-  submitLabel,
+  onSelectSummary,
 }: DecisionLedgerPanelProps) {
   const rows = buildLedgerRows(slices, activeId);
   const unresolvedCount = rows.filter((row) => row.status === "idle" || row.status === "active").length;
@@ -83,48 +83,86 @@ export function DecisionLedgerPanel({
         </ol>
       </section>
 
-      <section
+      <ReviewPacketCard
+        queuedCount={queuedComments.length}
+        keptLocalCount={deferredSlices.length}
+        unresolvedCount={unresolvedCount}
+        readyToPreview={reviewComplete}
+        active={summaryActive}
+        onSelect={onSelectSummary}
+      />
+    </aside>
+  );
+}
+
+function ReviewPacketCard({
+  queuedCount,
+  keptLocalCount,
+  unresolvedCount,
+  readyToPreview,
+  active,
+  onSelect,
+}: {
+  queuedCount: number;
+  keptLocalCount: number;
+  unresolvedCount: number;
+  readyToPreview: boolean;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review packet</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {queuedCount > 0
+              ? `${queuedCount} comment${queuedCount === 1 ? "" : "s"} staged for provider submit.`
+              : "No comments staged yet."}
+          </p>
+        </div>
+        <Badge
+          className={
+            readyToPreview
+              ? "border-anvil-success/25 bg-anvil-success/10 text-anvil-success"
+              : "border-border bg-background text-muted-foreground"
+          }
+        >
+          {readyToPreview ? "ready" : "not ready"}
+        </Badge>
+      </div>
+      {!readyToPreview ? (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Resolve {unresolvedCount} open decision{unresolvedCount === 1 ? "" : "s"} to build the submission packet.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Review {queuedCount} staged comment{queuedCount === 1 ? "" : "s"} and {keptLocalCount} local decision
+          {keptLocalCount === 1 ? "" : "s"} before submitting.
+        </p>
+      )}
+    </>
+  );
+
+  if (readyToPreview) {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
         className={cn(
-          "rounded-lg border bg-card p-3 shadow-sm",
-          reviewComplete && "border-primary/25 bg-primary/5",
+          "rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:bg-accent",
+          active && "border-primary/25 bg-primary/5 shadow-md hover:bg-primary/5",
         )}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review packet</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {queuedComments.length > 0
-                ? `${queuedComments.length} comment${queuedComments.length === 1 ? "" : "s"} staged for provider submit.`
-                : "No comments staged yet."}
-            </p>
-          </div>
-          <Badge
-            className={
-              reviewComplete
-                ? "border-anvil-success/25 bg-anvil-success/10 text-anvil-success"
-                : "border-border bg-background text-muted-foreground"
-            }
-          >
-            {reviewComplete ? "ready" : "not ready"}
-          </Badge>
-        </div>
-        {!reviewComplete ? (
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Resolve {unresolvedCount} open decision{unresolvedCount === 1 ? "" : "s"} to build the submission packet.
-          </p>
-        ) : (
-          <button
-            type="button"
-            className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={submitDisabled}
-            onClick={onSubmitReview}
-          >
-            <MessageSquarePlus className="size-4" />
-            {submitLabel}
-          </button>
-        )}
-      </section>
-    </aside>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <section className="rounded-md border border-transparent px-2 py-2">
+      {content}
+    </section>
   );
 }
 
@@ -146,16 +184,6 @@ function buildLedgerRows(slices: ReviewProgressSlice[], activeId: string): Ledge
       };
     }
 
-    if (slice.reviewed || handledCount > 0) {
-      return {
-        id: `${slice.id}:done`,
-        sliceId: slice.id,
-        title: slice.title,
-        detail: handledCount > 0 ? `${handledCount} finding${handledCount === 1 ? "" : "s"} handled` : "Looks safe",
-        status: "done" as const,
-      };
-    }
-
     if (slice.deferred) {
       return {
         id: `${slice.id}:deferred`,
@@ -163,6 +191,16 @@ function buildLedgerRows(slices: ReviewProgressSlice[], activeId: string): Ledge
         title: slice.title,
         detail: "Deferred",
         status: "deferred" as const,
+      };
+    }
+
+    if (slice.reviewed || handledCount > 0) {
+      return {
+        id: `${slice.id}:done`,
+        sliceId: slice.id,
+        title: slice.title,
+        detail: handledCount > 0 ? `${handledCount} finding${handledCount === 1 ? "" : "s"} handled` : "Looks safe",
+        status: "done" as const,
       };
     }
 

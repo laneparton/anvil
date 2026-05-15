@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { submitReviewSession } from "@/lib/api";
+import { submitReviewSession, type SubmitReviewAction } from "@/lib/api";
 import { formatUnknownError } from "@/lib/errors";
 import type { ReviewProgressComment } from "@/lib/review-progress";
 import type { ReviewPlan } from "@/lib/review-types";
@@ -49,7 +49,7 @@ export function useReviewSubmit({
     }, 1200);
   }, [clearProgress, refreshInbox, resetPreparation, setSelectedCommentId, setStage]);
 
-  const submitReview = React.useCallback(() => {
+  const submitReview = React.useCallback((actionOverride?: SubmitReviewAction) => {
     if (!activeSessionId) {
       setSubmitState({ status: "error", error: "No active review session is available to submit." });
       return;
@@ -61,8 +61,8 @@ export function useReviewSubmit({
       source: effectiveSelectedSource,
       repo: reviewPlan.pr.repo,
       pullRequest: String(reviewPlan.pr.number),
-      action: progressQueuedComments.length > 0 ? "comment" : "approve",
-      comments: progressQueuedComments,
+      action: actionOverride ?? (progressQueuedComments.length > 0 ? "comment" : "approve"),
+      comments: actionOverride === "approve" ? [] : progressQueuedComments,
     })
       .then((receipt) => {
         setSubmitState({
