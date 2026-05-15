@@ -1,13 +1,8 @@
 import * as React from "react";
 
 import type { ReviewInboxPullRequest } from "@/app/LauncherScreen";
-import {
-  ExperiencePrototype,
-  PreparingReviewPrototype,
-  ReviewQueuePrototype,
-  RuntimeReviewQueueWorkbench,
-} from "@/app/ExperiencePrototype";
 import { PreparingScreen } from "@/app/PreparingScreen";
+import { ReviewQueueWorkbench } from "@/app/ReviewQueueWorkbench";
 import { ReviewScreen } from "@/app/ReviewScreen";
 import { SettingsScreen } from "@/app/SettingsScreen";
 import { useReviewPreparation } from "@/app/useReviewPreparation";
@@ -59,17 +54,6 @@ const emptyReviewPlan: ReviewPlan = {
 };
 
 export function App() {
-  if (typeof window !== "undefined") {
-    const prototype = new URLSearchParams(window.location.search).get("prototype");
-    if (prototype === "review-queue") return <ReviewQueuePrototype />;
-    if (prototype === "preparing-review") return <PreparingReviewPrototype />;
-    if (prototype === "decision-flow") return <ExperiencePrototype />;
-  }
-
-  return <RuntimeApp />;
-}
-
-function RuntimeApp() {
   const [stage, setStage] = React.useState<AppStage>("launcher");
   const [activeId, setActiveId] = React.useState<string | undefined>(emptyReviewPlan.slices[0]?.id);
   const [selectedCommentId, setSelectedCommentId] = React.useState<string | undefined>();
@@ -271,7 +255,7 @@ function RuntimeApp() {
 
   if (stage === "launcher") {
     return (
-      <RuntimeReviewQueueWorkbench
+      <ReviewQueueWorkbench
         pullRequests={reviewInboxRows}
         selectedRowId={selectedPullRequest}
         activeFilter={reviewInboxFilter}
