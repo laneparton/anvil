@@ -603,9 +603,11 @@ function countSources(rows: NormalizedPullRequest[]) {
 }
 
 function normalizeSource(source: ReviewInboxPullRequest["source"] | string | undefined) {
-  const value = String(source ?? "").toLowerCase();
-  if (value.includes("bitbucket")) return "bitbucket";
-  if (value.includes("github")) return "github";
+  const value = String(source ?? "")
+    .trim()
+    .toLowerCase();
+  if (["bitbucket", "bitbucket.org", "bitbucket cloud"].includes(value)) return "bitbucket";
+  if (["github", "github.com", "github enterprise", "github enterprise server"].includes(value)) return "github";
   return "unknown";
 }
 

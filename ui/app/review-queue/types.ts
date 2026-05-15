@@ -1,7 +1,4 @@
-import type {
-  ReviewInboxFilter,
-  ReviewInboxPullRequest,
-} from "@/app/LauncherScreen";
+import type { ReviewInboxFilter, ReviewInboxPullRequest, ReviewInboxSourceFilter } from "@/app/LauncherScreen";
 
 export type QueueState = "needs-review" | "created-by-me" | "assigned-to-me" | "all-open";
 
@@ -69,6 +66,7 @@ export type ReviewQueueWorkbenchProps = {
   pullRequests: ReviewInboxPullRequest[];
   selectedRowId?: string;
   activeFilter?: ReviewInboxFilter;
+  sourceFilter?: ReviewInboxSourceFilter;
   searchQuery: string;
   loading: boolean;
   refreshing: boolean;
@@ -77,6 +75,7 @@ export type ReviewQueueWorkbenchProps = {
   providersEnabled: boolean;
   onSelectRow: (pullRequest: ReviewInboxPullRequest) => void;
   onActiveFilterChange: (filter: ReviewInboxFilter) => void;
+  onSourceFilterChange: (sourceFilter: ReviewInboxSourceFilter) => void;
   onSearchQueryChange: (query: string) => void;
   onRefresh: () => void;
   onPrepare: (pullRequest?: ReviewInboxPullRequest) => void;

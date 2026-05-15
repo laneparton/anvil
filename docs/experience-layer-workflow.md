@@ -76,6 +76,7 @@ For an inline finding, the reviewer can:
 - Edit the draft PR comment.
 - `Comment on PR`.
 - Mark it `Looks safe`.
+- Mark it `Resolved`.
 - `Defer` it for local follow-up.
 
 For a slice without an active finding, the reviewer can mark it `Looks safe`, `Defer` it, acknowledge a deferred slice, or resolve an open question before moving on.
@@ -95,7 +96,7 @@ When all slices are handled and no open findings remain, Anvil shows a completio
 It summarizes:
 
 - Comments ready to post.
-- Findings marked fixed.
+- Findings marked resolved.
 - Findings dismissed.
 - Remaining questions.
 - Deferred slices acknowledged.
@@ -110,7 +111,7 @@ Use this workflow to review the experience layer as a whole:
 - Does preparation feel trustworthy while work is happening?
 - Does the slice queue make the remaining work obvious?
 - Does the reviewer brief help, or does it add noise?
-- Are `Queue PR comment`, `Dismiss`, and `Fixed` clear enough?
+- Are `Comment on PR`, `Looks safe`, `Resolved`, and `Defer` clear enough?
 - Does comment staging match how reviewers expect to batch feedback?
 - Does agent handoff feel like part of the review flow?
 - Is the final provider impact clear before submission?

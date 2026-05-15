@@ -94,9 +94,11 @@ export async function openProviderPullRequestUrl(url: string): Promise<void> {
 }
 
 export function normalizeProvider(source: unknown): ProviderId | undefined {
-  const value = String(source ?? "").toLowerCase();
-  if (value.includes("github")) return "github";
-  if (value.includes("bitbucket")) return "bitbucket";
+  const value = String(source ?? "")
+    .trim()
+    .toLowerCase();
+  if (["github", "github.com", "github enterprise", "github enterprise server"].includes(value)) return "github";
+  if (["bitbucket", "bitbucket.org", "bitbucket cloud"].includes(value)) return "bitbucket";
   return undefined;
 }
 

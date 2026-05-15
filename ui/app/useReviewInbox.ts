@@ -3,6 +3,7 @@ import * as React from "react";
 import type {
   ReviewInboxFilter,
   ReviewInboxPullRequest,
+  ReviewInboxSourceFilter,
   ReviewSourceId,
 } from "@/app/LauncherScreen";
 import type { LoadingState } from "@/app/review-preparation";
@@ -34,6 +35,7 @@ export function useReviewInbox({
   const [selectedPullRequest, setSelectedPullRequest] = React.useState("");
   const [reviewInboxRows, setReviewInboxRows] = React.useState<ReviewInboxPullRequest[]>([]);
   const [reviewInboxFilter, setReviewInboxFilter] = React.useState<ReviewInboxFilter>("allOpen");
+  const [reviewInboxSourceFilter, setReviewInboxSourceFilter] = React.useState<ReviewInboxSourceFilter>("all");
   const [reviewInboxSearch, setReviewInboxSearch] = React.useState("");
   const [reviewInboxState, setReviewInboxState] = React.useState<LoadingState>("idle");
   const [reviewInboxRefreshId, setReviewInboxRefreshId] = React.useState(0);
@@ -46,9 +48,7 @@ export function useReviewInbox({
     }
 
     let cancelled = false;
-    const providers = (["github", "bitbucket"] as const).filter(
-      (provider) => appSettings.enabledProviders[provider],
-    );
+    const providers = (["github", "bitbucket"] as const).filter((provider) => appSettings.enabledProviders[provider]);
     let pendingProviders = providers.length;
     const providerErrors: Array<{ provider?: string; message?: string }> = [];
     const useCacheFirst = reviewInboxRefreshId === 0;
@@ -84,19 +84,13 @@ export function useReviewInbox({
           return;
         }
 
-        const applyRows = (
-          provider: ReviewSourceId,
-          rows: ReviewInboxPullRequest[],
-          replaceProviderRows: boolean,
-        ) => {
+        const applyRows = (provider: ReviewSourceId, rows: ReviewInboxPullRequest[], replaceProviderRows: boolean) => {
           setReviewInboxRows((current) => {
             const base = replaceProviderRows
               ? current.filter((row) => normalizeReviewSource(row.source) !== provider)
               : current;
             const next = mergeReviewInboxRows(base, rows);
-            setSelectedPullRequest((selected) =>
-              next.some((row) => row.id === selected) ? selected : "",
-            );
+            setSelectedPullRequest((selected) => (next.some((row) => row.id === selected) ? selected : ""));
             return next;
           });
         };
@@ -153,9 +147,7 @@ export function useReviewInbox({
   }, [appSettings, resetPreparation, reviewInboxRefreshId, settingsLoaded]);
 
   const selectedInboxRow = reviewInboxRows.find((row) => row.id === selectedPullRequest);
-  const selectedInboxHydrating = Boolean(
-    selectedInboxRow?.id && hydratingPullRequestId === selectedInboxRow.id,
-  );
+  const selectedInboxHydrating = Boolean(selectedInboxRow?.id && hydratingPullRequestId === selectedInboxRow.id);
   const launcherLoading = reviewInboxState === "loading" && reviewInboxRows.length === 0;
   const launcherRefreshing = reviewInboxState === "loading" && reviewInboxRows.length > 0;
 
@@ -215,6 +207,11 @@ export function useReviewInbox({
     setSelectedPullRequest("");
   }, []);
 
+  const changeSourceFilter = React.useCallback((sourceFilter: ReviewInboxSourceFilter) => {
+    setReviewInboxSourceFilter(sourceFilter);
+    setSelectedPullRequest("");
+  }, []);
+
   const refreshInbox = React.useCallback(() => {
     setReviewInboxRefreshId((id) => id + 1);
   }, []);
@@ -227,6 +224,7 @@ export function useReviewInbox({
     reviewInboxFilter,
     reviewInboxRows,
     reviewInboxSearch,
+    reviewInboxSourceFilter,
     selectedInboxRow,
     selectedInboxHydrating,
     selectedPullRequest,
@@ -238,5 +236,6 @@ export function useReviewInbox({
     setSelectedSource,
     selectInboxRow,
     changeActiveFilter,
+    changeSourceFilter,
   };
 }

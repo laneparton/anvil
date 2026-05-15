@@ -128,7 +128,18 @@
     "slice": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "risk", "decisionQuestion", "why", "files"],
+      "required": [
+        "id",
+        "title",
+        "risk",
+        "primaryRisk",
+        "decisionQuestion",
+        "whyTheseFilesTogether",
+        "why",
+        "acceptConditions",
+        "commentConditions",
+        "files"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -215,6 +226,7 @@
         },
         "acceptConditions": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
@@ -223,6 +235,7 @@
         },
         "commentConditions": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1

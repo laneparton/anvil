@@ -1,14 +1,5 @@
 import * as React from "react";
-import {
-  Bot,
-  CheckCircle2,
-  ChevronDown,
-  CircleAlert,
-  Eye,
-  FileCode2,
-  MessageSquarePlus,
-  Terminal,
-} from "lucide-react";
+import { Bot, CheckCircle2, ChevronDown, CircleAlert, Eye, FileCode2, MessageSquarePlus, Terminal } from "lucide-react";
 
 import type { ReviewAgent, ReviewSessionEvent } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +59,10 @@ export function DecisionStage({
   const defaultDraft = currentComment ? applyCommentTonePreset(currentComment.body, appSettings.commentTonePreset) : "";
   const draft = currentComment ? currentComment.draft || defaultDraft : "";
   const canQueueComment = !currentComment || draft.trim().length > 0;
-  const evidenceHunks = React.useMemo(() => sortEvidenceHunks(getEvidenceHunks(active), currentComment), [active, currentComment]);
+  const evidenceHunks = React.useMemo(
+    () => sortEvidenceHunks(getEvidenceHunks(active), currentComment),
+    [active, currentComment],
+  );
   const primaryHunk = evidenceHunks[0];
   const primaryFile = primaryHunk?.file ?? active.files[0] ?? "unavailable";
 
@@ -123,35 +117,67 @@ export function DecisionStage({
                   {stagedComment ? "Staged for PR" : "Comment on PR"}
                 </Button>
                 {handledComment ? (
-                  <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "open")}>
+                  <Button
+                    type="button"
+                    className="h-10 border-border bg-background px-4"
+                    onClick={() => handleCommentDecision(currentComment, "open")}
+                  >
                     <CircleAlert className="size-4" />
                     Restore finding
                   </Button>
                 ) : null}
-                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "dismissed")}>
+                <Button
+                  type="button"
+                  className="h-10 border-border bg-background px-4"
+                  onClick={() => handleCommentDecision(currentComment, "dismissed")}
+                >
                   <CheckCircle2 className="size-4" />
                   Looks safe
                 </Button>
-                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "deferred")}>
+                <Button
+                  type="button"
+                  className="h-10 border-border bg-background px-4"
+                  onClick={() => handleCommentDecision(currentComment, "resolved")}
+                >
+                  <CheckCircle2 className="size-4" />
+                  Resolved
+                </Button>
+                <Button
+                  type="button"
+                  className="h-10 border-border bg-background px-4"
+                  onClick={() => handleCommentDecision(currentComment, "deferred")}
+                >
                   <CircleAlert className="size-4" />
                   Defer
                 </Button>
               </>
             ) : deferredQuestion ? (
-              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={() => markActiveReviewed()}>
+              <Button
+                type="button"
+                className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
+                onClick={() => markActiveReviewed()}
+              >
                 <CircleAlert className="size-4" />
                 Acknowledge deferred
               </Button>
             ) : (
               <>
-              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={() => markActiveReviewed()}>
-                <CheckCircle2 className="size-4" />
-                Looks safe
-              </Button>
-              <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => markActiveReviewed(true)}>
-                <CircleAlert className="size-4" />
-                Defer
-              </Button>
+                <Button
+                  type="button"
+                  className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
+                  onClick={() => markActiveReviewed()}
+                >
+                  <CheckCircle2 className="size-4" />
+                  Looks safe
+                </Button>
+                <Button
+                  type="button"
+                  className="h-10 border-border bg-background px-4"
+                  onClick={() => markActiveReviewed(true)}
+                >
+                  <CircleAlert className="size-4" />
+                  Defer
+                </Button>
               </>
             )}
           </div>
@@ -265,13 +291,7 @@ function EvidencePanel({
   );
 }
 
-function ReviewerBrief({
-  slice,
-  actionableQuestions,
-}: {
-  slice: ReviewProgressSlice;
-  actionableQuestions: string[];
-}) {
+function ReviewerBrief({ slice, actionableQuestions }: { slice: ReviewProgressSlice; actionableQuestions: string[] }) {
   const brief = buildReviewerBrief(slice, actionableQuestions);
 
   return (
@@ -332,10 +352,7 @@ const EvidenceHunk = React.memo(function EvidenceHunk({
     (line) => String(line.newNumber) === String(inlineDraftLine) && line.kind !== "remove",
   );
   const visibleLineIndexes = React.useMemo(
-    () =>
-      fullHunkVisible
-        ? hunk.lines.map((_, index) => index)
-        : compactDiffLineIndexes(hunk.lines, inlineDraftLine),
+    () => (fullHunkVisible ? hunk.lines.map((_, index) => index) : compactDiffLineIndexes(hunk.lines, inlineDraftLine)),
     [fullHunkVisible, hunk.lines, inlineDraftLine],
   );
   const hiddenLineCount = diffVisible ? hunk.lines.length - visibleLineIndexes.length : hunk.lines.length;
@@ -427,7 +444,10 @@ const EvidenceHunk = React.memo(function EvidenceHunk({
             );
           })}
           {lastVisibleLineIndex !== undefined && lastVisibleLineIndex < hunk.lines.length - 1 ? (
-            <HiddenLinesButton count={hunk.lines.length - 1 - lastVisibleLineIndex} onExpand={() => setFullHunkVisible(true)} />
+            <HiddenLinesButton
+              count={hunk.lines.length - 1 - lastVisibleLineIndex}
+              onExpand={() => setFullHunkVisible(true)}
+            />
           ) : null}
         </>
       )}
@@ -445,7 +465,9 @@ function HiddenLinesButton({ count, onExpand }: { count: number; onExpand: () =>
       <span />
       <span />
       <span className="text-center">...</span>
-      <span className="text-left">Show {count} hidden line{count === 1 ? "" : "s"}</span>
+      <span className="text-left">
+        Show {count} hidden line{count === 1 ? "" : "s"}
+      </span>
     </button>
   );
 }
@@ -539,11 +561,7 @@ function compactDiffLineIndexes(lines: Hunk["lines"], targetLine: number | strin
 function indexesAroundAnchors(lineCount: number, anchors: number[], radius: number) {
   const visible = new Set<number>();
   for (const anchor of anchors) {
-    for (
-      let index = Math.max(0, anchor - radius);
-      index <= Math.min(lineCount - 1, anchor + radius);
-      index += 1
-    ) {
+    for (let index = Math.max(0, anchor - radius); index <= Math.min(lineCount - 1, anchor + radius); index += 1) {
       visible.add(index);
     }
   }
@@ -552,13 +570,7 @@ function indexesAroundAnchors(lineCount: number, anchors: number[], radius: numb
 }
 
 function diffLineKey(hunkId: string, line: Hunk["lines"][number]) {
-  return [
-    hunkId,
-    line.kind,
-    line.oldNumber ?? "old",
-    line.newNumber ?? "new",
-    line.text,
-  ].join(":");
+  return [hunkId, line.kind, line.oldNumber ?? "old", line.newNumber ?? "new", line.text].join(":");
 }
 
 function shouldRenderInlineDraft(
@@ -581,8 +593,18 @@ function getEvidenceHunks(slice: ReviewProgressSlice): Hunk[] {
       hunkId: `${slice.id}#placeholder`,
       reason: slice.why,
       lines: [
-        { kind: "context", oldNumber: 1, newNumber: 1, text: "// Review plan did not include a diff hunk for this slice." },
-        { kind: "add", oldNumber: null, newNumber: 2, text: "// TODO(review-plan): provide trust-anchor hunk lines from runtime preparation." },
+        {
+          kind: "context",
+          oldNumber: 1,
+          newNumber: 1,
+          text: "// Review plan did not include a diff hunk for this slice.",
+        },
+        {
+          kind: "add",
+          oldNumber: null,
+          newNumber: 2,
+          text: "// TODO(review-plan): provide trust-anchor hunk lines from runtime preparation.",
+        },
       ],
     },
   ];
@@ -676,7 +698,11 @@ function AgentButtons({
             disabled={disabled}
             onClick={() => onOpenAgent(preferredAgent)}
           >
-            {state.status === "launching" ? <Terminal className="size-3.5 text-anvil-info" /> : <Bot className="size-3.5 text-anvil-info" />}
+            {state.status === "launching" ? (
+              <Terminal className="size-3.5 text-anvil-info" />
+            ) : (
+              <Bot className="size-3.5 text-anvil-info" />
+            )}
             Ask {label}
           </button>
           <button
@@ -706,7 +732,9 @@ function AgentButtons({
           </div>
         ) : null}
       </div>
-      {state.status === "error" ? <div className="max-w-56 text-right text-xs text-destructive">{state.error}</div> : null}
+      {state.status === "error" ? (
+        <div className="max-w-56 text-right text-xs text-destructive">{state.error}</div>
+      ) : null}
     </div>
   );
 }

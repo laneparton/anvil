@@ -17,7 +17,9 @@
       "id": "new-package",
       "title": "New package",
       "risk": "low",
+      "primaryRisk": "General package changes might have issues.",
       "decisionQuestion": "Does this package change need review beyond docs and examples?",
+      "whyTheseFilesTogether": "All files are part of the new package.",
       "why": "Adds a new MCP package with docs and examples.",
       "files": [
         ".changeset/react-mcp-initial.md",
@@ -82,6 +84,8 @@
         "packages/react-mcp/tsconfig.json",
         "pnpm-lock.yaml"
       ],
+      "acceptConditions": ["Accept if the package looks good."],
+      "commentConditions": ["Comment if something looks wrong."],
       "evidence": ["parsed the diff"],
       "suggestedDecision": "Approve with no comments."
     }

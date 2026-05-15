@@ -53,6 +53,8 @@ describe("review inbox helpers", () => {
   it("normalizes source labels and provider timeout display values", () => {
     expect(normalizeReviewSource("Bitbucket Cloud")).toBe("bitbucket");
     expect(normalizeReviewSource("GitHub Enterprise")).toBe("github");
+    expect(normalizeReviewSource("bitbucket-github")).toBeUndefined();
+    expect(normalizeReviewSource("notgithub")).toBeUndefined();
     expect(normalizeReviewSource("gitlab")).toBeUndefined();
     expect(sourceLabel("github")).toBe("GitHub");
     expect(providerTimeoutMs("bitbucket")).toBe(15_000);

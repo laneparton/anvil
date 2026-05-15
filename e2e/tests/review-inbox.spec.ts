@@ -2,7 +2,10 @@ import { clearCapturedInvokes, getCapturedInvokes } from "@srsholmes/tauri-playw
 import { expect, test } from "../fixtures";
 
 test("review inbox renders and filters mocked provider rows", async ({ tauriPage }) => {
-  test.skip(test.info().project.name === "tauri", "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.");
+  test.skip(
+    test.info().project.name === "tauri",
+    "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.",
+  );
 
   await expect(tauriPage.getByTestId("review-inbox")).toBeVisible();
   await expect(tauriPage.getByTestId("review-inbox-status")).toBeAttached();
@@ -30,7 +33,9 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
   await expect(tauriPage.getByTestId("manual-pr-number")).toHaveCount(0);
   await tauriPage.getByRole("button", { name: "Close" }).click();
 
-  const listCanScroll = await tauriPage.getByTestId("pull-request-list").evaluate((element) => element.scrollHeight > element.clientHeight);
+  const listCanScroll = await tauriPage
+    .getByTestId("pull-request-list")
+    .evaluate((element) => element.scrollHeight > element.clientHeight);
   expect(listCanScroll).toBe(true);
 
   await clearCapturedInvokes(tauriPage);
@@ -46,11 +51,24 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
   await allOpenGroup.click();
   await expect(allOpenGroup).toHaveAttribute("aria-expanded", "false");
 
-  await expect(tauriPage.getByRole("button", { name: /All sources|Bitbucket 30|GitHub 1/ })).toHaveCount(0);
+  const sourceFilter = tauriPage.getByRole("button", { name: /Filter PR sources: All sources, 31/ });
+  await expect(sourceFilter).toBeVisible();
+  await sourceFilter.click();
+  await expect(tauriPage.getByRole("menuitemradio", { name: /All sources 31/ })).toBeVisible();
+  await expect(tauriPage.getByRole("menuitemradio", { name: /GitHub 1/ })).toBeVisible();
+  await expect(tauriPage.getByRole("menuitemradio", { name: /Bitbucket 30/ })).toBeVisible();
+  await tauriPage.getByRole("menuitemradio", { name: /GitHub 1/ }).click();
+  await expect(tauriPage.getByTestId("pull-request-row")).toHaveCount(1);
+  await expect(tauriPage.getByRole("button", { name: /Tighten review inbox behavior/ })).toBeVisible();
+  await tauriPage.getByRole("button", { name: /Filter PR sources: GitHub, 1/ }).click();
+  await tauriPage.getByRole("menuitemradio", { name: /All sources 31/ }).click();
 });
 
 test("manual PR prepare uses the pasted URL target", async ({ tauriPage }) => {
-  test.skip(test.info().project.name === "tauri", "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.");
+  test.skip(
+    test.info().project.name === "tauri",
+    "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.",
+  );
 
   await clearCapturedInvokes(tauriPage);
   await tauriPage.getByTestId("open-manual-pr").click();
@@ -59,47 +77,101 @@ test("manual PR prepare uses the pasted URL target", async ({ tauriPage }) => {
 
   await expect(tauriPage.getByText("octo-org/manual-repo #42")).toBeVisible();
   let request: unknown;
-  await expect.poll(async () => {
-    const calls = await getCapturedInvokes(tauriPage);
-    request = calls.find((call) => call.cmd === "start_review_session")?.args.request;
-    return request;
-  }).toMatchObject({
-    source: "github",
-    repo: "octo-org/manual-repo",
-    pullRequest: "42",
-  });
+  await expect
+    .poll(async () => {
+      const calls = await getCapturedInvokes(tauriPage);
+      request = calls.find((call) => call.cmd === "start_review_session")?.args.request;
+      return request;
+    })
+    .toMatchObject({
+      source: "github",
+      repo: "octo-org/manual-repo",
+      pullRequest: "42",
+    });
 
-  const sessionId = typeof request === "object" && request !== null
-    ? (request as { sessionId?: unknown }).sessionId
-    : undefined;
+  const sessionId =
+    typeof request === "object" && request !== null ? (request as { sessionId?: unknown }).sessionId : undefined;
   expect(typeof sessionId).toBe("string");
-  await tauriPage.evaluate(`window.__TAURI_EMIT_MOCK_EVENT__("review-session-event", ${JSON.stringify({
-    sessionId,
-    type: "planner.ready",
-    message: "Planner ready.",
-    data: {
-      plannedSlices: [
-        {
+  await tauriPage.evaluate(
+    `window.__TAURI_EMIT_MOCK_EVENT__("review-session-event", ${JSON.stringify({
+      sessionId,
+      type: "planner.ready",
+      message: "Planner ready.",
+      data: {
+        plannedSlices: [
+          {
+            id: "manual-slice",
+            title: "Manual streamed slice",
+            risk: "low",
+            why: "Exercise streamed placeholder review metadata.",
+            files: ["src/manual.ts"],
+          },
+        ],
+      },
+    })})`,
+  );
+  await expect(tauriPage.getByRole("heading", { name: "Preparing review" })).toBeVisible();
+  await expect(
+    tauriPage.getByText("Anvil opens the review when the first actionable decision is ready."),
+  ).toBeVisible();
+  await expect(tauriPage.getByRole("heading", { name: "Manual PR #42" })).toHaveCount(0);
+
+  await tauriPage.evaluate(
+    `window.__TAURI_EMIT_MOCK_EVENT__("review-session-event", ${JSON.stringify({
+      sessionId,
+      type: "slice.ready",
+      message: "Manual streamed slice ready.",
+      data: {
+        slice: {
           id: "manual-slice",
           title: "Manual streamed slice",
           risk: "low",
+          status: "needs-human",
+          deferred: false,
+          deferReason: "",
           why: "Exercise streamed placeholder review metadata.",
           files: ["src/manual.ts"],
+          filesReviewed: ["src/manual.ts"],
+          hunks: [
+            {
+              file: "src/manual.ts",
+              hunkId: "src/manual.ts#manual",
+              reason: "Manual review smoke hunk",
+              lines: [],
+            },
+          ],
+          inlineComments: [
+            {
+              file: "src/manual.ts",
+              hunkId: "src/manual.ts#manual",
+              line: 12,
+              severity: "question",
+              body: "Could this manual review path post to the wrong pull request?",
+            },
+          ],
+          remainingQuestions: [],
+          evidence: ["src/manual.ts: verify manual target propagation."],
         },
-      ],
-    },
-  })})`);
+      },
+    })})`,
+  );
   await expect(tauriPage.getByRole("heading", { name: "Manual PR #42" })).toBeVisible();
+  await expect(tauriPage.getByText("Could this manual review path post to the wrong pull request?")).toBeVisible();
   await expect(tauriPage.getByRole("heading", { name: "No review loaded" })).toHaveCount(0);
 });
 
 test("settings screen saves handoff and provider configuration", async ({ tauriPage }) => {
-  test.skip(test.info().project.name === "tauri", "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.");
+  test.skip(
+    test.info().project.name === "tauri",
+    "This test uses browser-mode IPC mocks; native app startup is covered by smoke:tauri.",
+  );
 
   await tauriPage.getByTestId("open-settings").click();
   await expect(tauriPage.getByTestId("settings-screen")).toBeVisible();
 
-  await expect(tauriPage.getByTestId("provider-bitbucket").getByRole("button", { name: "Enabled", exact: true })).toBeVisible();
+  await expect(
+    tauriPage.getByTestId("provider-bitbucket").getByRole("button", { name: "Enabled", exact: true }),
+  ).toBeVisible();
   await tauriPage.getByTestId("bitbucket-pinned-repos").fill("workspace/example-service");
   await tauriPage.getByRole("button", { name: "Custom", exact: true }).click();
   await tauriPage.getByTestId("custom-terminal-app").fill("iTerm");

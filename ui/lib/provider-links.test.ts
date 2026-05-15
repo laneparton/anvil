@@ -56,6 +56,32 @@ describe("provider pull request links", () => {
     ).toBeUndefined();
   });
 
+  it("does not derive provider URLs from composite or malformed provider labels", () => {
+    expect(
+      resolveProviderPullRequestLink({
+        source: "notgithub",
+        repo: "owner/repo",
+        pullRequest: 1,
+      }),
+    ).toBeUndefined();
+
+    expect(
+      resolveProviderPullRequestLink({
+        source: "bitbucket-github",
+        repo: "owner/repo",
+        pullRequest: 1,
+      }),
+    ).toBeUndefined();
+
+    expect(
+      resolveProviderPullRequestLink({
+        source: "GitHub Enterprise",
+        repo: "owner/repo",
+        pullRequest: 1,
+      }),
+    ).toMatchObject({ provider: "github" });
+  });
+
   it("does not derive provider URLs from unsafe repo slugs", () => {
     expect(
       resolveProviderPullRequestLink({

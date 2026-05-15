@@ -108,6 +108,7 @@ export function App() {
     reviewInboxFilter,
     reviewInboxRows,
     reviewInboxSearch,
+    reviewInboxSourceFilter,
     selectedInboxRow,
     selectedInboxHydrating,
     selectedPullRequest,
@@ -118,6 +119,7 @@ export function App() {
     setSelectedPullRequest,
     setSelectedRepo,
     setSelectedSource,
+    changeSourceFilter,
   } = useReviewInbox({
     appSettings,
     settingsLoaded,
@@ -212,18 +214,21 @@ export function App() {
     [progress.slices],
   );
 
-  const markActiveReviewed = React.useCallback((deferred = false) => {
-    const reviewedIds = new Set(progress.state.reviewedSliceIds);
-    reviewedIds.add(active.id);
+  const markActiveReviewed = React.useCallback(
+    (deferred = false) => {
+      const reviewedIds = new Set(progress.state.reviewedSliceIds);
+      reviewedIds.add(active.id);
 
-    progress.setSliceDeferred(active.id, deferred);
-    progress.setSliceReviewed(active.id, true);
-    const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
+      progress.setSliceDeferred(active.id, deferred);
+      progress.setSliceReviewed(active.id, true);
+      const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
 
-    if (nextSlice) {
-      setActiveId(nextSlice.id);
-    }
-  }, [active.id, progress]);
+      if (nextSlice) {
+        setActiveId(nextSlice.id);
+      }
+    },
+    [active.id, progress],
+  );
 
   const handleCommentDecision = React.useCallback(
     (comment: ReviewProgressComment, decision: CommentDecision) => {
@@ -279,17 +284,18 @@ export function App() {
         pullRequests={reviewInboxRows}
         selectedRowId={selectedPullRequest}
         activeFilter={reviewInboxFilter}
+        sourceFilter={reviewInboxSourceFilter}
         searchQuery={reviewInboxSearch}
         loading={launcherLoading}
         refreshing={launcherRefreshing}
         selectedDetailsLoading={selectedInboxHydrating}
         error={launcherError}
         providersEnabled={
-          settingsLoaded &&
-          (appSettings.enabledProviders.github || appSettings.enabledProviders.bitbucket)
+          settingsLoaded && (appSettings.enabledProviders.github || appSettings.enabledProviders.bitbucket)
         }
         onSelectRow={selectInboxRow}
         onActiveFilterChange={changeActiveFilter}
+        onSourceFilterChange={changeSourceFilter}
         onSearchQueryChange={setReviewInboxSearch}
         onRefresh={refreshInbox}
         onOpenSettings={openSettings}
