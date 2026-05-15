@@ -17,6 +17,7 @@
       "id": "new-package",
       "title": "New package",
       "risk": "low",
+      "decisionQuestion": "Does this package change need review beyond docs and examples?",
       "why": "Adds a new MCP package with docs and examples.",
       "files": [
         ".changeset/react-mcp-initial.md",

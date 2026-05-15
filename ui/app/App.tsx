@@ -198,6 +198,20 @@ export function App() {
     }
   }, [active.comments, selectedCommentId]);
 
+  const selectReviewSlice = React.useCallback(
+    (sliceId: string) => {
+      const nextSlice = progress.slices.find((slice) => slice.id === sliceId);
+      const nextComment =
+        nextSlice?.comments.find((comment) => comment.decision === "open") ??
+        nextSlice?.comments.find((comment) => comment.decision === "converted" || comment.decision === "deferred") ??
+        nextSlice?.comments.find((comment) => comment.decision === "dismissed" || comment.decision === "resolved");
+
+      setActiveId(sliceId);
+      setSelectedCommentId(nextComment?.id);
+    },
+    [progress.slices],
+  );
+
   const markActiveReviewed = React.useCallback((deferred = false) => {
     const reviewedIds = new Set(progress.state.reviewedSliceIds);
     reviewedIds.add(active.id);
@@ -216,6 +230,7 @@ export function App() {
       if (decision === "open") {
         progress.setCommentDecision(comment.id, "open");
         progress.setSliceReviewed(active.id, false);
+        progress.setSliceDeferred(active.id, false);
         setSelectedCommentId(comment.id);
         return;
       }
@@ -235,6 +250,7 @@ export function App() {
       }
 
       reviewedIds.add(active.id);
+      progress.setSliceDeferred(active.id, false);
       progress.setSliceReviewed(active.id, true);
 
       const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
@@ -353,7 +369,7 @@ export function App() {
       reviewTitle={reviewPlan.pr.title}
       reviewWorktree={reviewWorktree}
       selectedCommentId={selectedCommentId}
-      setActiveId={setActiveId}
+      setActiveId={selectReviewSlice}
       setSelectedCommentId={setSelectedCommentId}
       submitReview={submitReview}
       submitState={submitState}

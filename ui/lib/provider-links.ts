@@ -36,16 +36,23 @@ export function resolveProviderPullRequestLink({
     return undefined;
   }
 
-  const [owner, name, ...extra] = repo.split("/").filter(Boolean);
-  if (!owner || !name || extra.length > 0) {
+  const slug = parseProviderRepoSlug(repo);
+  if (!slug) {
     return undefined;
   }
+  const [owner, name] = slug;
 
   if (provider === "github") {
-    return toProviderLink(provider, `https://github.com/${owner}/${name}/pull/${number}`);
+    return toProviderLink(
+      provider,
+      `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pull/${number}`,
+    );
   }
 
-  return toProviderLink(provider, `https://bitbucket.org/${owner}/${name}/pull-requests/${number}`);
+  return toProviderLink(
+    provider,
+    `https://bitbucket.org/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pull-requests/${number}`,
+  );
 }
 
 export function normalizeProviderPullRequestUrl(
@@ -91,6 +98,30 @@ export function normalizeProvider(source: unknown): ProviderId | undefined {
   if (value.includes("github")) return "github";
   if (value.includes("bitbucket")) return "bitbucket";
   return undefined;
+}
+
+function parseProviderRepoSlug(repo: string): [string, string] | undefined {
+  const parts = repo.split("/");
+  if (parts.length !== 2) {
+    return undefined;
+  }
+
+  const [owner, name] = parts.map((part) => part.trim());
+  if (!isProviderRepoSegment(owner) || !isProviderRepoSegment(name)) {
+    return undefined;
+  }
+
+  return [owner, name];
+}
+
+function isProviderRepoSegment(segment: string): boolean {
+  return (
+    segment.length > 0 &&
+    segment.length <= 100 &&
+    segment !== "." &&
+    segment !== ".." &&
+    /^[A-Za-z0-9._-]+$/.test(segment)
+  );
 }
 
 function toProviderLink(provider: ProviderId, url: string): ProviderPullRequestLink {

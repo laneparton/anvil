@@ -93,7 +93,7 @@ describe("review preparation helpers", () => {
     const plannedSlices: PlannedSlice[] = [
       { id: "auth", title: "Auth", risk: "high", why: "Callback", files: ["src/auth.ts"] },
     ];
-    const created = createPlannedReviewPlan(plan(), plannedSlices, request);
+    const created = createPlannedReviewPlan(plan(), plannedSlices, request, new Set());
 
     expect(created.pr).toEqual({
       repo: "owner/repo",
@@ -146,6 +146,7 @@ describe("review preparation helpers", () => {
         { id: "docs", title: "Docs", risk: "low", why: "Docs metadata", files: ["README.md"] },
       ],
       request,
+      new Set(["auth"]),
     );
 
     const auth = created.slices.find((item) => item.id === "auth");
@@ -159,6 +160,68 @@ describe("review preparation helpers", () => {
     expect(auth?.hunks).toHaveLength(1);
     expect(auth?.inlineComments).toHaveLength(1);
     expect(auth?.remainingQuestions).toEqual(["Is replay covered?"]);
+  });
+
+  it("does not merge stale findings when planner metadata arrives first for a reused slice id", () => {
+    const stalePriorSlice = slice({
+      id: "auth",
+      title: "Prior auth review",
+      risk: "medium",
+      files: ["src/old-auth.ts"],
+      filesReviewed: ["src/old-auth.ts"],
+      hunks: [{ file: "src/old-auth.ts", hunkId: "src/old-auth.ts#h1", reason: "Old callback", lines: [] }],
+      inlineComments: [
+        {
+          file: "src/old-auth.ts",
+          hunkId: "src/old-auth.ts#h1",
+          line: 12,
+          severity: "blocking",
+          body: "Old finding from a previous review.",
+        },
+      ],
+      remainingQuestions: ["Old unresolved question?"],
+      evidence: ["src/old-auth.ts:12"],
+    });
+
+    const created = createPlannedReviewPlan(
+      plan({
+        completion: {
+          status: "blocked",
+          reviewedFiles: 1,
+          totalFiles: 1,
+          reviewedHunks: 1,
+          totalHunks: 1,
+          blockingComments: 1,
+          openQuestions: 1,
+        },
+        slices: [stalePriorSlice],
+      }),
+      [{ id: "auth", title: "Auth callback", risk: "high", why: "New planner metadata", files: ["src/auth.ts"] }],
+      request,
+      new Set(),
+    );
+
+    expect(created.slices[0]).toMatchObject({
+      id: "auth",
+      title: "Auth callback",
+      risk: "high",
+      why: "New planner metadata",
+      files: ["src/auth.ts"],
+      filesReviewed: [],
+      hunks: [],
+      inlineComments: [],
+      remainingQuestions: [],
+      evidence: [],
+    });
+    expect(created.completion).toMatchObject({
+      status: "needs-human",
+      reviewedFiles: 0,
+      totalFiles: 1,
+      reviewedHunks: 0,
+      totalHunks: 0,
+      blockingComments: 0,
+      openQuestions: 0,
+    });
   });
 
   it("merges streaming slices and recomputes completion counts", () => {

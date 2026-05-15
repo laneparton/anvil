@@ -192,7 +192,9 @@ export function useReviewPreparation({
         const plannedSlices = getPlannedSlices(event.data);
         if (event.type === "planner.ready" && plannedSlices.length > 0) {
           const orderedPlannedSlices = orderPlannedSlices(plannedSlices);
-          setReviewPlan((current) => createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest));
+          setReviewPlan((current) =>
+            createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest, streamedSliceIds),
+          );
           setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id).filter((id) => !streamedSliceIds.has(id))));
           hasStreamingPlan = true;
         }

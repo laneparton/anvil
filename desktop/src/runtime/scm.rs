@@ -388,7 +388,6 @@ pub(crate) fn list_review_inbox_blocking(
     if provider_enabled(&request, "github") {
         match github_inbox_all_open(&request, limit, cache_mode) {
             Ok(mut provider_rows) => rows.append(&mut provider_rows),
-            Err(_error) if cache_mode == ProviderCacheMode::CacheFirst => {}
             Err(error) => errors.push(json!({ "provider": "GitHub", "message": error })),
         }
     }
@@ -396,7 +395,6 @@ pub(crate) fn list_review_inbox_blocking(
     if provider_enabled(&request, "bitbucket") {
         match bitbucket_inbox(&request, limit, cache_mode) {
             Ok(mut provider_rows) => rows.append(&mut provider_rows),
-            Err(_error) if cache_mode == ProviderCacheMode::CacheFirst => {}
             Err(error) => errors.push(json!({ "provider": "Bitbucket", "message": error })),
         }
     }

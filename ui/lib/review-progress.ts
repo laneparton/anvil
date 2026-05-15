@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { filterActionableQuestions } from "./review-questions";
 import type { InlineComment, ReviewPlan, Slice } from "./review-types";
 
-export type CommentDecision = "open" | "resolved" | "dismissed" | "converted";
+export type CommentDecision = "open" | "resolved" | "dismissed" | "deferred" | "converted";
 
 export type ReviewProgressState = {
   reviewedSliceIds: string[];
@@ -19,6 +19,7 @@ export type ReviewProgressCounts = {
   openComments: number;
   resolvedComments: number;
   dismissedComments: number;
+  deferredComments: number;
   convertedComments: number;
   actionedComments: number;
   remainingComments: number;
@@ -82,6 +83,7 @@ const COMMENT_DECISIONS: CommentDecision[] = [
   "open",
   "resolved",
   "dismissed",
+  "deferred",
   "converted",
 ];
 
@@ -261,17 +263,21 @@ function countComments(comments: ReviewProgressComment[]) {
   const dismissedComments = comments.filter(
     (comment) => comment.decision === "dismissed",
   ).length;
+  const deferredComments = comments.filter(
+    (comment) => comment.decision === "deferred",
+  ).length;
   const convertedComments = comments.filter(
     (comment) => comment.decision === "converted",
   ).length;
   const openComments = comments.filter((comment) => comment.decision === "open").length;
-  const actionedComments = resolvedComments + dismissedComments + convertedComments;
+  const actionedComments = resolvedComments + dismissedComments + deferredComments + convertedComments;
 
   return {
     totalComments: comments.length,
     openComments,
     resolvedComments,
     dismissedComments,
+    deferredComments,
     convertedComments,
     actionedComments,
     remainingComments: openComments,

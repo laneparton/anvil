@@ -17,6 +17,7 @@
       "id": "oauth-auth-token-storage",
       "title": "OAuth state, callback routing, token storage, and refresh",
       "risk": "high",
+      "decisionQuestion": "Does the OAuth flow persist and redeem auth state safely without duplicate callback or token handling?",
       "why": "This is the new trust boundary: createOAuthProvider.ts owns OAuth state, PKCE, DCR and token refresh, useMcpOAuthCallback.tsx redeems callback codes, and the storage resources persist tokens and PKCE verifiers.",
       "files": [
         "packages/react-mcp/src/auth/buildHeaders.ts",
@@ -60,6 +61,7 @@
       "id": "server-lifecycle-transport-cleanup",
       "title": "Server connect/auth/failure/disconnect transport lifecycle",
       "risk": "high",
+      "decisionQuestion": "Does every server lifecycle path clean up transport and expose valid user actions?",
       "why": "McpServerResource.ts owns StreamableHTTP transport creation, authRequired transitions, connect failures, tool refresh, disconnect, remove, and cleanup. The server primitives expose those lifecycle paths to users.",
       "files": [
         "packages/react-mcp/src/resources/McpServerResource.ts",
@@ -97,6 +99,7 @@
       "id": "manager-store-custom-server-records",
       "title": "Manager store hydration and custom server records",
       "risk": "high",
+      "decisionQuestion": "Does manager hydration preserve stable custom server records without mixing scopes or ids?",
       "why": "McpManagerResource.ts and mcp-scope.ts define the manager/store contract, custom server persistence, hydration, connector ids, and per-server scoping.",
       "files": [
         "packages/react-mcp/src/connector.ts",
@@ -128,6 +131,7 @@
       "id": "tap-modelcontext-public-api",
       "title": "Tap resources and public API surface",
       "risk": "medium",
+      "decisionQuestion": "Does the exported package API match the runtime resource and modelContext contract?",
       "why": "The package exports a Tap/resource surface and modelContext tools contract. Even though McpManagerResource.ts owns the implementation, this slice checks the public API wiring and package-level contract.",
       "files": [
         "packages/react-mcp/src/index.ts",
@@ -156,6 +160,7 @@
       "id": "primitive-render-function-list-behavior",
       "title": "Add form primitives and render-function list behavior",
       "risk": "medium",
+      "decisionQuestion": "Do form and list primitives validate user input and keep render-function identity stable?",
       "why": "McpAddFormRoot.tsx owns submitted custom-server form state, auth field rendering, validation, and primitive composition. Manager and server list primitives must key render-function lists by stable ids, not array index.",
       "files": [
         "packages/react-mcp/src/primitives/addForm.ts",
@@ -197,6 +202,7 @@
       "title": "Docs, examples, and package support",
       "risk": "low",
       "deferred": true,
+      "decisionQuestion": "Do docs, examples, and package metadata accurately support the shipped MCP package behavior?",
       "why": "Support material should validate the runtime contract but should not outrank OAuth, lifecycle, store, or public API risk.",
       "files": [
         ".changeset/react-mcp-initial.md",

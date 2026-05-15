@@ -110,9 +110,8 @@ export function DecisionReviewScreen({
           : "Approve PR";
   const submitDisabled = submitState.status === "submitted" || submitState.status === "submitting";
   const handledComments = progress.comments.filter(
-    (comment) => comment.decision === "dismissed" || comment.decision === "resolved",
+    (comment) => comment.decision === "dismissed" || comment.decision === "resolved" || comment.decision === "deferred",
   );
-  const deferredSlices = progress.slices.filter((slice) => slice.deferred || slice.comments.some((comment) => comment.decision === "resolved"));
   const showingSummary = reviewComplete && viewMode === "summary";
 
   React.useEffect(() => {
@@ -212,7 +211,6 @@ export function DecisionReviewScreen({
 
         <DecisionLedgerPanel
           activeId={active.id}
-          deferredSlices={deferredSlices}
           reviewComplete={reviewComplete}
           pendingSliceCount={pendingSliceCount}
           slices={progress.slices}
@@ -391,9 +389,15 @@ function SubmissionPreviewMain({
           {handledComments.length > 0 ? (
             <ul className="mt-2 grid gap-1">
               {handledComments.map((comment) => (
-                <li key={comment.id} className="flex items-center justify-between gap-3 text-sm leading-5 text-muted-foreground">
+                <li key={comment.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 rounded px-2 py-1 text-left text-sm leading-5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={() => onOpenComment(comment)}
+                  >
                   <span>{comment.body}</span>
-                  <span className="shrink-0 text-xs">{comment.decision === "resolved" ? "Deferred" : "Looks safe"}</span>
+                    <span className="shrink-0 text-xs">{localDecisionLabel(comment.decision)}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -404,6 +408,12 @@ function SubmissionPreviewMain({
       </div>
     </section>
   );
+}
+
+function localDecisionLabel(decision: CommentDecision) {
+  if (decision === "deferred") return "Deferred";
+  if (decision === "resolved") return "Resolved";
+  return "Looks safe";
 }
 
 function ReviewDispositionButton({

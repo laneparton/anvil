@@ -267,8 +267,12 @@ export async function listReviewInbox(request: ReviewInboxRequest): Promise<Revi
 export async function hydrateReviewInboxRow(
   request: ReviewInboxHydrateRequest,
 ): Promise<ReviewInboxHydrateResult> {
+  const payload: ReviewInboxHydrateRequest = {
+    ...request,
+    pullRequest: String(request.pullRequest),
+  };
   const data = await tauriInvoke<Partial<ReviewInboxHydrateResult> | undefined>("hydrate_review_inbox_row", {
-    request,
+    request: payload,
   });
   return {
     row: typeof data?.row === "object" && data.row !== null ? data.row : undefined,

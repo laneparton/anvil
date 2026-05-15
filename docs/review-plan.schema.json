@@ -128,7 +128,7 @@
     "slice": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "risk", "why", "files"],
+      "required": ["id", "title", "risk", "decisionQuestion", "why", "files"],
       "properties": {
         "id": {
           "type": "string",

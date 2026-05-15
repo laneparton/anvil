@@ -64,6 +64,7 @@ export function DecisionStage({
   const currentQuestion = !currentComment && !active.reviewed ? actionableQuestions[0] : undefined;
   const deferredQuestion = active.deferred && !active.reviewed;
   const stagedComment = currentComment?.decision === "converted";
+  const handledComment = currentComment ? currentComment.decision !== "open" : false;
   const defaultDraft = currentComment ? applyCommentTonePreset(currentComment.body, appSettings.commentTonePreset) : "";
   const draft = currentComment ? currentComment.draft || defaultDraft : "";
   const canQueueComment = !currentComment || draft.trim().length > 0;
@@ -121,7 +122,7 @@ export function DecisionStage({
                   <MessageSquarePlus className="size-4" />
                   {stagedComment ? "Staged for PR" : "Comment on PR"}
                 </Button>
-                {stagedComment ? (
+                {handledComment ? (
                   <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "open")}>
                     <CircleAlert className="size-4" />
                     Restore finding
@@ -131,7 +132,7 @@ export function DecisionStage({
                   <CheckCircle2 className="size-4" />
                   Looks safe
                 </Button>
-                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "resolved")}>
+                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "deferred")}>
                   <CircleAlert className="size-4" />
                   Defer
                 </Button>

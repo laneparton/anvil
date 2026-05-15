@@ -16,7 +16,6 @@ type LedgerRow = {
 
 type DecisionLedgerPanelProps = {
   activeId: string;
-  deferredSlices: ReviewProgressSlice[];
   pendingSliceCount: number;
   reviewComplete: boolean;
   slices: ReviewProgressSlice[];
@@ -28,7 +27,6 @@ type DecisionLedgerPanelProps = {
 
 export function DecisionLedgerPanel({
   activeId,
-  deferredSlices,
   pendingSliceCount,
   reviewComplete,
   slices,
@@ -42,6 +40,7 @@ export function DecisionLedgerPanel({
   const remainingReviewCount = rows.filter((row) => row.status === "active" || (row.status === "idle" && !row.quiet)).length;
   const visibleRows = rows.filter((row) => !row.quiet);
   const quietRows = rows.filter((row) => row.quiet);
+  const keptLocalCount = countLocalDecisions(slices);
 
   return (
     <aside className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden border-l bg-card">
@@ -91,7 +90,7 @@ export function DecisionLedgerPanel({
 
       <ReviewPacketCard
         queuedComments={queuedComments}
-        keptLocalCount={deferredSlices.length}
+        keptLocalCount={keptLocalCount}
         openFindingCount={openFindingCount}
         remainingReviewCount={remainingReviewCount}
         readyToPreview={reviewComplete}
@@ -290,8 +289,9 @@ function ReviewPacketCard({
 function buildLedgerRows(slices: ReviewProgressSlice[], activeId: string): LedgerRow[] {
   return slices.map((slice) => {
     const queuedCount = slice.comments.filter((comment) => comment.decision === "converted").length;
+    const deferredCount = slice.comments.filter((comment) => comment.decision === "deferred").length;
     const handledCount = slice.comments.filter(
-      (comment) => comment.decision === "dismissed" || comment.decision === "resolved",
+      (comment) => comment.decision === "dismissed" || comment.decision === "resolved" || comment.decision === "deferred",
     ).length;
     const openCount = slice.comments.filter((comment) => comment.decision === "open").length;
 
@@ -324,10 +324,15 @@ function buildLedgerRows(slices: ReviewProgressSlice[], activeId: string): Ledge
         id: `${slice.id}:done`,
         sliceId: slice.id,
         title: slice.title,
-        detail: handledCount > 0 ? `${handledCount} finding${handledCount === 1 ? "" : "s"} handled` : "Looks safe",
+        detail:
+          deferredCount > 0
+            ? `${deferredCount} finding${deferredCount === 1 ? "" : "s"} deferred`
+            : handledCount > 0
+              ? `${handledCount} finding${handledCount === 1 ? "" : "s"} handled`
+              : "Looks safe",
         status: "done" as const,
         openCount,
-        quiet: openCount === 0,
+        quiet: openCount === 0 && handledCount === 0,
       };
     }
 
@@ -347,4 +352,14 @@ function buildLedgerRows(slices: ReviewProgressSlice[], activeId: string): Ledge
       quiet: !current && !hasOpenFindings,
     };
   });
+}
+
+function countLocalDecisions(slices: ReviewProgressSlice[]) {
+  return slices.reduce((total, slice) => {
+    const localCommentDecisions = slice.comments.filter(
+      (comment) => comment.decision === "dismissed" || comment.decision === "resolved" || comment.decision === "deferred",
+    ).length;
+
+    return total + localCommentDecisions + (slice.deferred ? 1 : 0);
+  }, 0);
 }

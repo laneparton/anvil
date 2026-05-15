@@ -130,9 +130,12 @@ export function createPlannedReviewPlan(
   current: ReviewPlan,
   plannedSlices: PlannedSlice[],
   request: PendingPrepareRequest,
+  streamedSliceIds: ReadonlySet<string>,
 ): ReviewPlan {
   const slices = plannedSlices.map((plannedSlice) => {
-    const existingSlice = current.slices.find((slice) => slice.id === plannedSlice.id);
+    const existingSlice = streamedSliceIds.has(plannedSlice.id)
+      ? current.slices.find((slice) => slice.id === plannedSlice.id)
+      : undefined;
     if (!existingSlice) {
       return createPendingPlannedSlice(plannedSlice);
     }
@@ -146,7 +149,7 @@ export function createPlannedReviewPlan(
       files: plannedSlice.files,
     });
   });
-  const totalFiles = new Set(slices.flatMap((slice) => slice.files)).size;
+  const completion = createCompletionForSlices(slices);
 
   return {
     ...current,
@@ -156,10 +159,7 @@ export function createPlannedReviewPlan(
       title: request.title || current.pr.title,
       url: request.url ?? current.pr.url,
     },
-    completion: {
-      ...current.completion,
-      totalFiles: Math.max(totalFiles, current.completion.totalFiles),
-    },
+    completion,
     slices: orderReviewSlices(slices),
   };
 }
@@ -175,6 +175,34 @@ function createPendingPlannedSlice(slice: PlannedSlice): Slice {
     inlineComments: [],
     remainingQuestions: [],
     evidence: [],
+  };
+}
+
+function createCompletionForSlices(slices: Slice[]): ReviewPlan["completion"] {
+  const totalFiles = new Set(slices.flatMap((slice) => slice.files)).size;
+  const reviewedFiles = new Set(slices.flatMap((slice) => slice.filesReviewed)).size;
+  const reviewedHunks = slices.reduce((sum, slice) => sum + slice.hunks.length, 0);
+  const blockingComments = slices.reduce(
+    (sum, slice) => sum + slice.inlineComments.filter((comment) => comment.severity === "blocking").length,
+    0,
+  );
+  const openQuestions = slices.reduce(
+    (sum, slice) => sum + filterActionableQuestions(slice.remainingQuestions).length,
+    0,
+  );
+  const hasPendingHumanWork = slices.some((slice) => slice.status === "needs-human");
+
+  return {
+    status:
+      blockingComments > 0 ? "blocked" :
+      openQuestions > 0 || hasPendingHumanWork ? "needs-human" :
+      "agent-reviewed",
+    reviewedFiles,
+    totalFiles,
+    reviewedHunks,
+    totalHunks: reviewedHunks,
+    blockingComments,
+    openQuestions,
   };
 }
 

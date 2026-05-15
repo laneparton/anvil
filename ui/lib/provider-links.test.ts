@@ -55,4 +55,30 @@ describe("provider pull request links", () => {
       }),
     ).toBeUndefined();
   });
+
+  it("does not derive provider URLs from unsafe repo slugs", () => {
+    expect(
+      resolveProviderPullRequestLink({
+        source: "github",
+        repo: "owner/repo?tab=security",
+        pullRequest: 1,
+      }),
+    ).toBeUndefined();
+
+    expect(
+      resolveProviderPullRequestLink({
+        source: "github",
+        repo: "owner/repo#fragment",
+        pullRequest: 1,
+      }),
+    ).toBeUndefined();
+
+    expect(
+      resolveProviderPullRequestLink({
+        source: "bitbucket",
+        repo: "workspace/../repo",
+        pullRequest: 1,
+      }),
+    ).toBeUndefined();
+  });
 });
