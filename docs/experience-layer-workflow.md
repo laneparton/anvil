@@ -58,15 +58,14 @@ The important experience job here is trust. The user should be able to tell whet
 
 ### 4. Review Focused Slices
 
-When preparation finishes, the workspace opens into three columns:
+When preparation finishes, the workspace opens into a two-column review surface:
 
-- Left: review queue.
-- Center: active slice and diff.
-- Right: decisions, queued comments, and agent handoff.
+- Main column: active slice, reviewer brief, evidence hunks, inline findings, and agent handoff.
+- Right rail: decision ledger, pending slices, staged comments, and the final review packet.
 
-The review queue is the user's map. It shows slice order, active slice, risk, pending/deferred/reviewed states, blocker counts, and open questions. The reviewer can jump between slices at any time.
+The decision ledger is the user's map. It shows slice order, active slice, risk, pending/deferred/reviewed states, blocker counts, and open questions. The reviewer can jump between slices at any time.
 
-The center panel is code-first. It shows the active slice title, reviewer brief, verification checklist, grouped hunks, line numbers, syntax highlighting, and inline findings anchored to diff lines.
+The main panel is code-first. It shows the active slice title, reviewer brief, verification checklist, grouped hunks, line numbers, syntax highlighting, and inline findings anchored to diff lines.
 
 ### 5. Decide What to Do
 
@@ -75,13 +74,13 @@ The right rail turns plan output into human decisions.
 For an inline finding, the reviewer can:
 
 - Edit the draft PR comment.
-- `Queue PR comment`.
-- `Dismiss` it.
-- Mark it `Fixed`.
+- `Comment on PR`.
+- Mark it `Looks safe`.
+- `Defer` it for local follow-up.
 
-For a slice without an active finding, the reviewer can finish it, acknowledge a deferred slice, or resolve an open question before moving on.
+For a slice without an active finding, the reviewer can mark it `Looks safe`, `Defer` it, acknowledge a deferred slice, or resolve an open question before moving on.
 
-Queued comments are staged before provider submission. The tray shows file, line, severity, and draft preview, and lets the reviewer edit or remove a queued comment.
+Queued comments are staged before provider submission. The review packet shows file, line, severity, and draft preview, and lets the reviewer reopen a staged comment to edit, restore, or keep it local.
 
 ### 6. Escalate to an Agent
 

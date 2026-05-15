@@ -110,6 +110,57 @@ describe("review preparation helpers", () => {
     });
   });
 
+  it("merges planner metadata without replacing streamed slice findings", () => {
+    const streamed = slice({
+      id: "auth",
+      title: "Original streamed title",
+      risk: "medium",
+      files: ["src/auth.ts"],
+      filesReviewed: ["src/auth.ts"],
+      hunks: [{ file: "src/auth.ts", hunkId: "src/auth.ts#h1", reason: "Callback", lines: [] }],
+      inlineComments: [
+        {
+          file: "src/auth.ts",
+          hunkId: "src/auth.ts#h1",
+          line: 42,
+          severity: "blocking",
+          body: "Guard duplicate redemption.",
+        },
+      ],
+      remainingQuestions: ["Is replay covered?"],
+      evidence: ["src/auth.ts:42"],
+    });
+    const created = createPlannedReviewPlan(
+      plan({
+        completion: {
+          ...plan().completion,
+          reviewedFiles: 1,
+          reviewedHunks: 1,
+          blockingComments: 1,
+          openQuestions: 1,
+        },
+        slices: [streamed],
+      }),
+      [
+        { id: "auth", title: "Auth callback", risk: "high", why: "Planner metadata", files: ["src/auth.ts"] },
+        { id: "docs", title: "Docs", risk: "low", why: "Docs metadata", files: ["README.md"] },
+      ],
+      request,
+    );
+
+    const auth = created.slices.find((item) => item.id === "auth");
+    expect(auth).toMatchObject({
+      title: "Auth callback",
+      risk: "high",
+      why: "Planner metadata",
+      filesReviewed: ["src/auth.ts"],
+      evidence: ["src/auth.ts:42"],
+    });
+    expect(auth?.hunks).toHaveLength(1);
+    expect(auth?.inlineComments).toHaveLength(1);
+    expect(auth?.remainingQuestions).toEqual(["Is replay covered?"]);
+  });
+
   it("merges streaming slices and recomputes completion counts", () => {
     const merged = mergeStreamingSlice(
       plan({ completion: { ...plan().completion, totalFiles: 1 } }),

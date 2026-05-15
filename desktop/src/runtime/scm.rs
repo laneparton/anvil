@@ -710,6 +710,7 @@ fn github_inbox_search_all_open(
         .unwrap_or(&Vec::new())
         .iter()
         .filter_map(|pull| github_search_issue_row(pull, &current_user, cache_status, cached_at))
+        .map(|row| enrich_github_inbox_row(row, cache_mode))
         .collect())
 }
 
@@ -776,7 +777,7 @@ fn github_search_issue_row(
             .map(String::from),
         head_ref_name: None,
         base_ref_name: None,
-        needs_review: false,
+        needs_review: github_review_requests_include(pull, current_user),
         is_created_by_me: author.eq_ignore_ascii_case(current_user),
         is_assigned_to_me: github_assignees_include(pull, current_user),
         cache_status: Some(cache_status.as_str().into()),
@@ -790,7 +791,7 @@ fn github_search_issue_row(
         deletions_count: None,
         checks: None,
         approvals: None,
-        requested_reviewers: Vec::new(),
+        requested_reviewers: github_requested_reviewers(pull),
         changed_file_groups: Vec::new(),
         activity: github_activity(pull, &author),
     })
@@ -1298,6 +1299,12 @@ fn enrich_github_inbox_row(mut row: ReviewInboxRow, cache_mode: ProviderCacheMod
             .map(String::from)
             .or(row.base_ref_name);
         row.requested_reviewers = github_requested_reviewers(&detail);
+        if let Some(current_user) = github_current_user_login_with_cache(cache_mode) {
+            row.needs_review = row
+                .requested_reviewers
+                .iter()
+                .any(|reviewer| reviewer.eq_ignore_ascii_case(&current_user));
+        }
     }
 
     if let Ok(issue) = github_api_get(
@@ -1923,7 +1930,7 @@ fn github_search_all_open_row(pull: &Value, current_user: &str) -> Option<Review
         url: pull.get("url").and_then(Value::as_str).map(String::from),
         head_ref_name: None,
         base_ref_name: None,
-        needs_review: false,
+        needs_review: github_review_requests_include(pull, current_user),
         is_created_by_me: author.eq_ignore_ascii_case(current_user),
         is_assigned_to_me: github_assignees_include(pull, current_user),
         cache_status: None,
@@ -1937,7 +1944,7 @@ fn github_search_all_open_row(pull: &Value, current_user: &str) -> Option<Review
         deletions_count: None,
         checks: None,
         approvals: None,
-        requested_reviewers: Vec::new(),
+        requested_reviewers: github_requested_reviewers(pull),
         changed_file_groups: Vec::new(),
         activity: github_activity(pull, &author),
     })

@@ -233,8 +233,11 @@ function ReviewPacketCard({
         </Badge>
       </div>
       {queuedComments.length > 0 ? (
-        <div className="mt-3 grid gap-2">
-          {queuedComments.slice(0, 3).map((comment) => (
+        <div
+          className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1"
+          aria-label={`${queuedCount} staged review comments`}
+        >
+          {queuedComments.map((comment) => (
             <div key={comment.id} className="rounded-md bg-muted/45 px-2.5 py-2 text-xs">
               <div className="mb-1 flex min-w-0 items-center gap-1.5">
                 <span className="size-1.5 shrink-0 rounded-full bg-primary" />

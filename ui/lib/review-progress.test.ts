@@ -56,6 +56,7 @@ describe("createReviewProgressSnapshot", () => {
     const commentId = initial.comments[0].id;
     const state: ReviewProgressState = {
       reviewedSliceIds: ["auth"],
+      deferredSliceIds: [],
       commentDecisions: {
         [commentId]: "converted",
       },
@@ -75,5 +76,20 @@ describe("createReviewProgressSnapshot", () => {
     });
     expect(snapshot.queuedComments).toHaveLength(1);
     expect(snapshot.queuedComments[0].draft).toBe("Please add a test for Strict Mode callback replay.");
+  });
+
+  it("applies local deferred slice decisions", () => {
+    const state: ReviewProgressState = {
+      reviewedSliceIds: ["auth"],
+      deferredSliceIds: ["auth"],
+      commentDecisions: {},
+      commentDrafts: {},
+    };
+    const snapshot = createReviewProgressSnapshot([slice({ inlineComments: [] })], state);
+
+    expect(snapshot.slices[0]).toMatchObject({
+      deferred: true,
+      reviewed: true,
+    });
   });
 });

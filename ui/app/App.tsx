@@ -135,6 +135,8 @@ export function App() {
     [active.comments],
   );
   const currentComment = openComments.find((comment) => comment.id === selectedCommentId) ?? openComments[0];
+  const selectedComment = active.comments.find((comment) => comment.id === selectedCommentId);
+  const activeComment = selectedComment ?? currentComment;
   const activeIndex = progress.slices.findIndex((slice) => slice.id === active.id);
   const activePending = pendingSliceIds.has(active.id);
   const highRiskPendingCount = progress.slices.filter(
@@ -191,19 +193,16 @@ export function App() {
   resetSubmitStateRef.current = () => setSubmitState({ status: "idle" });
 
   React.useEffect(() => {
-    setSelectedCommentId(undefined);
-  }, [active.id]);
-
-  React.useEffect(() => {
-    if (selectedCommentId && !openComments.some((comment) => comment.id === selectedCommentId)) {
+    if (selectedCommentId && !active.comments.some((comment) => comment.id === selectedCommentId)) {
       setSelectedCommentId(undefined);
     }
-  }, [openComments, selectedCommentId]);
+  }, [active.comments, selectedCommentId]);
 
-  const markActiveReviewed = React.useCallback(() => {
+  const markActiveReviewed = React.useCallback((deferred = false) => {
     const reviewedIds = new Set(progress.state.reviewedSliceIds);
     reviewedIds.add(active.id);
 
+    progress.setSliceDeferred(active.id, deferred);
     progress.setSliceReviewed(active.id, true);
     const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
 
@@ -213,7 +212,14 @@ export function App() {
   }, [active.id, progress]);
 
   const handleCommentDecision = React.useCallback(
-    (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => {
+    (comment: ReviewProgressComment, decision: CommentDecision) => {
+      if (decision === "open") {
+        progress.setCommentDecision(comment.id, "open");
+        progress.setSliceReviewed(active.id, false);
+        setSelectedCommentId(comment.id);
+        return;
+      }
+
       const reviewedIds = new Set(progress.state.reviewedSliceIds);
       const remainingOpenComments = active.comments.filter(
         (candidate) => candidate.id !== comment.id && candidate.decision === "open",
@@ -318,7 +324,7 @@ export function App() {
       agentLaunchState={agentLaunchState}
       appSettings={appSettings}
       clearReview={clearReview}
-      currentComment={currentComment}
+      currentComment={activeComment}
       deferredSlices={deferredSlices}
       handleCommentDecision={handleCommentDecision}
       handleOpenAgent={handleOpenAgent}

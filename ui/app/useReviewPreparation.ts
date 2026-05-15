@@ -111,6 +111,7 @@ export function useReviewPreparation({
     let completed = false;
     let openedReview = false;
     let hasStreamingPlan = false;
+    const streamedSliceIds = new Set<string>();
     let subscription: { unsubscribe: () => void } | undefined;
     const sessionId = createReviewSessionId();
     if (!prepareRequest) {
@@ -166,6 +167,7 @@ export function useReviewPreparation({
         const readySlice = getReadySlice(event.data);
         if (event.type === "slice.ready" && readySlice) {
           const normalizedReadySlice = normalizeSlice(readySlice);
+          streamedSliceIds.add(normalizedReadySlice.id);
           setPendingSliceIds((current) => {
             const next = new Set(current);
             next.delete(normalizedReadySlice.id);
@@ -191,7 +193,7 @@ export function useReviewPreparation({
         if (event.type === "planner.ready" && plannedSlices.length > 0) {
           const orderedPlannedSlices = orderPlannedSlices(plannedSlices);
           setReviewPlan((current) => createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest));
-          setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id)));
+          setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id).filter((id) => !streamedSliceIds.has(id))));
           hasStreamingPlan = true;
         }
 

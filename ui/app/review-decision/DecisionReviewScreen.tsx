@@ -38,9 +38,9 @@ type DecisionReviewScreenProps = {
   appSettings: AppSettings;
   clearReview: () => void;
   currentComment: ReviewProgressComment | undefined;
-  handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
+  handleCommentDecision: (comment: ReviewProgressComment, decision: CommentDecision) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
-  markActiveReviewed: () => void;
+  markActiveReviewed: (deferred?: boolean) => void;
   onExitReview: () => void;
   onOpenSettings: () => void;
   onOpenProvider?: () => void;
@@ -171,7 +171,11 @@ export function DecisionReviewScreen({
               error={submitState.status === "error" ? submitState.error : undefined}
               handledComments={handledComments}
               onDispositionChange={setReviewAction}
-              onOpenSlice={selectDecision}
+              onOpenComment={(comment) => {
+                setActiveId(comment.sliceId);
+                setSelectedCommentId(comment.id);
+                setViewMode("decision");
+              }}
               onSubmitReview={() => submitReview(effectiveReviewAction)}
               receiptId={submitState.receiptId}
               submitDisabled={submitDisabled}
@@ -294,7 +298,7 @@ function SubmissionPreviewMain({
   error,
   handledComments,
   onDispositionChange,
-  onOpenSlice,
+  onOpenComment,
   onSubmitReview,
   receiptId,
   submitDisabled,
@@ -306,7 +310,7 @@ function SubmissionPreviewMain({
   error?: string;
   handledComments: ReviewProgressComment[];
   onDispositionChange: (disposition: "comment" | "approve") => void;
-  onOpenSlice: (sliceId: string) => void;
+  onOpenComment: (comment: ReviewProgressComment) => void;
   onSubmitReview: () => void;
   receiptId?: string;
   submitDisabled: boolean;
@@ -374,7 +378,7 @@ function SubmissionPreviewMain({
           {comments.length > 0 ? (
             <div className="grid gap-3">
               {comments.map((comment) => (
-                <PreviewComment key={comment.id} comment={comment} onOpen={() => onOpenSlice(comment.sliceId)} />
+                <PreviewComment key={comment.id} comment={comment} onOpen={() => onOpenComment(comment)} />
               ))}
             </div>
           ) : (

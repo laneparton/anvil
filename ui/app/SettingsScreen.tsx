@@ -72,6 +72,10 @@ export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: S
   const [draft, setDraft] = React.useState(() => settings);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    setDraft(settings);
+  }, [settings]);
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
   const setProviderEnabled = (provider: ProviderId, enabled: boolean) => {

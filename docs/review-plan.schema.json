@@ -158,6 +158,7 @@
         },
         "decisionQuestion": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 180,
           "description": "Concise reviewer decision question. Supporting detail belongs in why."
         },

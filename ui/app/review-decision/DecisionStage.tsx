@@ -30,9 +30,9 @@ type DecisionStageProps = {
   agentLaunchState: AgentLaunchState;
   appSettings: AppSettings;
   currentComment: ReviewProgressComment | undefined;
-  handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
+  handleCommentDecision: (comment: ReviewProgressComment, decision: CommentDecision) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
-  markActiveReviewed: () => void;
+  markActiveReviewed: (deferred?: boolean) => void;
   openComments: ReviewProgressComment[];
   prepareEvent?: ReviewSessionEvent;
   reviewWorktree?: string;
@@ -63,6 +63,7 @@ export function DecisionStage({
   const actionableQuestions = filterActionableQuestions(active.remainingQuestions);
   const currentQuestion = !currentComment && !active.reviewed ? actionableQuestions[0] : undefined;
   const deferredQuestion = active.deferred && !active.reviewed;
+  const stagedComment = currentComment?.decision === "converted";
   const defaultDraft = currentComment ? applyCommentTonePreset(currentComment.body, appSettings.commentTonePreset) : "";
   const draft = currentComment ? currentComment.draft || defaultDraft : "";
   const canQueueComment = !currentComment || draft.trim().length > 0;
@@ -109,7 +110,7 @@ export function DecisionStage({
                 <Button
                   type="button"
                   className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
-                  disabled={!canQueueComment}
+                  disabled={stagedComment || !canQueueComment}
                   onClick={() => {
                     if (!currentComment.draft) {
                       setCommentDraft(currentComment.id, defaultDraft);
@@ -118,8 +119,14 @@ export function DecisionStage({
                   }}
                 >
                   <MessageSquarePlus className="size-4" />
-                  Comment on PR
+                  {stagedComment ? "Staged for PR" : "Comment on PR"}
                 </Button>
+                {stagedComment ? (
+                  <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "open")}>
+                    <CircleAlert className="size-4" />
+                    Restore finding
+                  </Button>
+                ) : null}
                 <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "dismissed")}>
                   <CheckCircle2 className="size-4" />
                   Looks safe
@@ -130,17 +137,17 @@ export function DecisionStage({
                 </Button>
               </>
             ) : deferredQuestion ? (
-              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
+              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={() => markActiveReviewed()}>
                 <CircleAlert className="size-4" />
                 Acknowledge deferred
               </Button>
             ) : (
               <>
-              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
+              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={() => markActiveReviewed()}>
                 <CheckCircle2 className="size-4" />
                 Looks safe
               </Button>
-              <Button type="button" className="h-10 border-border bg-background px-4" onClick={markActiveReviewed}>
+              <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => markActiveReviewed(true)}>
                 <CircleAlert className="size-4" />
                 Defer
               </Button>

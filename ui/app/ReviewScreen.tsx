@@ -50,10 +50,10 @@ export function ReviewScreen({
   clearReview: () => void;
   currentComment: ReviewProgressComment | undefined;
   deferredSlices: ReviewProgressSlice[];
-  handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
+  handleCommentDecision: (comment: ReviewProgressComment, decision: CommentDecision) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
   highRiskPendingCount: number;
-  markActiveReviewed: () => void;
+  markActiveReviewed: (deferred?: boolean) => void;
   onExitReview: () => void;
   onOpenSettings: () => void;
   onOpenProvider?: () => void;

@@ -260,9 +260,7 @@ fn github_auth_token() -> Option<String> {
 }
 
 fn github_auth_identity_hash() -> String {
-    let token = config_var("GH_TOKEN")
-        .or_else(|| config_var("GITHUB_TOKEN"))
-        .unwrap_or_else(|| "gh-cli-or-anonymous".into());
+    let token = github_auth_token().unwrap_or_else(|| "anonymous".into());
     stable_identity_hash(&format!("github:{token}"))
 }
 
@@ -412,7 +410,11 @@ pub(crate) fn bitbucket_paginated_with_cache(
     while !next.is_empty() && values.len() < limit {
         let page = match bitbucket_api_get(&next, ttl_seconds, mode) {
             Ok(page) => page,
-            Err(_error) if mode == ProviderCacheMode::CacheFirst && !values.is_empty() => break,
+            Err(error) if mode == ProviderCacheMode::CacheFirst && !values.is_empty() => {
+                return Err(format!(
+                    "Incomplete cached Bitbucket response for {path}: missing page {next}. {error}"
+                ));
+            }
             Err(error) => return Err(error),
         };
         cache_status = cache_status.combine(page.cache_status);

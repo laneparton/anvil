@@ -131,6 +131,23 @@ export function createPlannedReviewPlan(
   plannedSlices: PlannedSlice[],
   request: PendingPrepareRequest,
 ): ReviewPlan {
+  const slices = plannedSlices.map((plannedSlice) => {
+    const existingSlice = current.slices.find((slice) => slice.id === plannedSlice.id);
+    if (!existingSlice) {
+      return createPendingPlannedSlice(plannedSlice);
+    }
+
+    return normalizeSlice({
+      ...existingSlice,
+      id: plannedSlice.id,
+      title: plannedSlice.title,
+      risk: plannedSlice.risk,
+      why: plannedSlice.why,
+      files: plannedSlice.files,
+    });
+  });
+  const totalFiles = new Set(slices.flatMap((slice) => slice.files)).size;
+
   return {
     ...current,
     pr: {
@@ -140,25 +157,24 @@ export function createPlannedReviewPlan(
       url: request.url ?? current.pr.url,
     },
     completion: {
-      status: "needs-human",
-      reviewedFiles: 0,
-      totalFiles: current.completion.totalFiles,
-      reviewedHunks: 0,
-      totalHunks: current.completion.totalHunks,
-      blockingComments: 0,
-      openQuestions: 0,
+      ...current.completion,
+      totalFiles: Math.max(totalFiles, current.completion.totalFiles),
     },
-    slices: plannedSlices.map((slice) => ({
-      ...slice,
-      status: "needs-human",
-      deferred: false,
-      deferReason: "",
-      filesReviewed: [],
-      hunks: [],
-      inlineComments: [],
-      remainingQuestions: [],
-      evidence: [],
-    })),
+    slices: orderReviewSlices(slices),
+  };
+}
+
+function createPendingPlannedSlice(slice: PlannedSlice): Slice {
+  return {
+    ...slice,
+    status: "needs-human",
+    deferred: false,
+    deferReason: "",
+    filesReviewed: [],
+    hunks: [],
+    inlineComments: [],
+    remainingQuestions: [],
+    evidence: [],
   };
 }
 
