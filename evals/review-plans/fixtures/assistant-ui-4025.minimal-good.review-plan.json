@@ -95,7 +95,7 @@
     },
     {
       "id": "manager-store-custom-server-records",
-      "title": "Manager store, hydration, connector lookup, and custom server records",
+      "title": "Manager store hydration and custom server records",
       "risk": "high",
       "why": "McpManagerResource.ts and mcp-scope.ts define the manager/store contract, custom server persistence, hydration, connector ids, and per-server scoping.",
       "files": [
@@ -126,7 +126,7 @@
     },
     {
       "id": "tap-modelcontext-public-api",
-      "title": "Tap resources, modelContext tool registration, and public API surface",
+      "title": "Tap resources and public API surface",
       "risk": "medium",
       "why": "The package exports a Tap/resource surface and modelContext tools contract. Even though McpManagerResource.ts owns the implementation, this slice checks the public API wiring and package-level contract.",
       "files": [
@@ -194,7 +194,7 @@
     },
     {
       "id": "docs-examples-package-lockfile-support",
-      "title": "Docs, examples, package metadata, changeset, and lockfile support",
+      "title": "Docs, examples, and package support",
       "risk": "low",
       "deferred": true,
       "why": "Support material should validate the runtime contract but should not outrank OAuth, lifecycle, store, or public API risk.",

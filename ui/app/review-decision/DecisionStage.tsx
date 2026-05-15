@@ -17,7 +17,7 @@ import { applyCommentTonePreset } from "@/lib/comment-tone";
 import { filterActionableQuestions } from "@/lib/review-questions";
 import type { CommentDecision, ReviewProgressComment, ReviewProgressSlice } from "@/lib/review-progress";
 import type { Hunk } from "@/lib/review-types";
-import { resolveTerminalApp, type AppSettings } from "@/lib/settings";
+import type { AppSettings } from "@/lib/settings";
 import { buildReviewerBrief, formatCount } from "@/lib/review-workflow";
 import { cn } from "@/lib/utils";
 
@@ -66,89 +66,94 @@ export function DecisionStage({
   const defaultDraft = currentComment ? applyCommentTonePreset(currentComment.body, appSettings.commentTonePreset) : "";
   const draft = currentComment ? currentComment.draft || defaultDraft : "";
   const canQueueComment = !currentComment || draft.trim().length > 0;
-  const evidenceHunks = React.useMemo(() => getEvidenceHunks(active), [active]);
+  const evidenceHunks = React.useMemo(() => sortEvidenceHunks(getEvidenceHunks(active), currentComment), [active, currentComment]);
   const primaryHunk = evidenceHunks[0];
   const primaryFile = primaryHunk?.file ?? active.files[0] ?? "unavailable";
 
   return (
-    <div className="grid gap-4">
-      <section className="rounded-lg border bg-card p-3 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <RiskBadge risk={active.risk} />
-              <StatusBadge activePending={activePending} currentComment={currentComment} reviewed={active.reviewed} />
-              <span className="text-xs text-muted-foreground">
-                {active.files.length} file{active.files.length === 1 ? "" : "s"} · slice {activeIndex + 1} of {totalSlices}
-              </span>
-            </div>
-            <h2 className="mt-2 max-w-4xl text-xl font-semibold leading-tight">
-              {currentComment ? currentComment.body : active.decisionQuestion || active.title}
-            </h2>
-            <p className="mt-1.5 max-w-4xl text-sm leading-6 text-muted-foreground">{active.why}</p>
+    <div className="grid gap-5">
+      <section className="overflow-hidden rounded-lg border bg-card shadow-sm">
+        <div className="flex items-center justify-between gap-4 border-b bg-muted/25 px-4 py-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <RiskBadge risk={active.risk} />
+            <StatusBadge activePending={activePending} currentComment={currentComment} reviewed={active.reviewed} />
           </div>
-          <AgentButtons
-            worktree={reviewWorktree}
-            state={agentLaunchState}
-            settings={appSettings}
-            onOpenAgent={handleOpenAgent}
-          />
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">
+            {active.files.length} file{active.files.length === 1 ? "" : "s"} · slice {activeIndex + 1} of {totalSlices}
+          </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {activePending ? (
-            <div className="text-sm text-muted-foreground">
-              {prepareEvent?.message ?? "A focused reviewer is inspecting this slice."}
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="line-clamp-2 max-w-4xl text-lg font-semibold leading-snug">
+                {currentComment ? currentComment.body : active.decisionQuestion || active.title}
+              </h2>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">{active.why}</p>
             </div>
-          ) : currentComment ? (
-            <>
-              <Button
-                type="button"
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={!canQueueComment}
-                onClick={() => {
-                  if (!currentComment.draft) {
-                    setCommentDraft(currentComment.id, defaultDraft);
-                  }
-                  handleCommentDecision(currentComment, "converted");
-                }}
-              >
-                <MessageSquarePlus className="size-4" />
-                Comment on PR
+            <AgentButtons
+              worktree={reviewWorktree}
+              state={agentLaunchState}
+              settings={appSettings}
+              onOpenAgent={handleOpenAgent}
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {activePending ? (
+              <div className="text-sm text-muted-foreground">
+                {prepareEvent?.message ?? "A focused reviewer is inspecting this slice."}
+              </div>
+            ) : currentComment ? (
+              <>
+                <Button
+                  type="button"
+                  className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
+                  disabled={!canQueueComment}
+                  onClick={() => {
+                    if (!currentComment.draft) {
+                      setCommentDraft(currentComment.id, defaultDraft);
+                    }
+                    handleCommentDecision(currentComment, "converted");
+                  }}
+                >
+                  <MessageSquarePlus className="size-4" />
+                  Comment on PR
+                </Button>
+                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "dismissed")}>
+                  <CheckCircle2 className="size-4" />
+                  Looks safe
+                </Button>
+                <Button type="button" className="h-10 border-border bg-background px-4" onClick={() => handleCommentDecision(currentComment, "resolved")}>
+                  <CircleAlert className="size-4" />
+                  Defer
+                </Button>
+              </>
+            ) : deferredQuestion ? (
+              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
+                <CircleAlert className="size-4" />
+                Acknowledge deferred
               </Button>
-              <Button type="button" className="border-border bg-background" onClick={() => handleCommentDecision(currentComment, "dismissed")}>
+            ) : (
+              <>
+              <Button type="button" className="h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
                 <CheckCircle2 className="size-4" />
                 Looks safe
               </Button>
-              <Button type="button" className="border-border bg-background" onClick={() => handleCommentDecision(currentComment, "resolved")}>
+              <Button type="button" className="h-10 border-border bg-background px-4" onClick={markActiveReviewed}>
                 <CircleAlert className="size-4" />
                 Defer
               </Button>
-            </>
-          ) : deferredQuestion ? (
-            <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
-              <CircleAlert className="size-4" />
-              Acknowledge deferred
-            </Button>
-          ) : (
-            <>
-            <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={markActiveReviewed}>
-              <CheckCircle2 className="size-4" />
-              Looks safe
-            </Button>
-            <Button type="button" className="border-border bg-background" onClick={markActiveReviewed}>
-              <CircleAlert className="size-4" />
-              Defer
-            </Button>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </section>
 
-      {!currentComment ? <ReviewerBrief slice={active} actionableQuestions={actionableQuestions} /> : null}
+      {currentQuestion ? <OpenQuestionBanner question={currentQuestion} /> : null}
 
       <section className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Eye className="size-4 text-primary" />
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inspect evidence</h3>
@@ -191,6 +196,8 @@ export function DecisionStage({
           ))}
         </div>
       </section>
+
+      {!currentComment ? <ReviewerBrief slice={active} actionableQuestions={actionableQuestions} /> : null}
     </div>
   );
 }
@@ -203,10 +210,9 @@ function ReviewerBrief({
   actionableQuestions: string[];
 }) {
   const brief = buildReviewerBrief(slice, actionableQuestions);
-  const currentQuestion = !slice.reviewed ? actionableQuestions[0] : undefined;
 
   return (
-    <section className="grid gap-3 rounded-lg border bg-card p-4">
+    <section className="grid gap-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Reviewer brief
         <span className="font-normal normal-case tracking-normal text-muted-foreground">
@@ -217,31 +223,25 @@ function ReviewerBrief({
         <BriefRow label="Change to review" value={brief.whatChanged} />
         <BriefRow label="Review focus" value={brief.whyItMatters} />
       </div>
-      {currentQuestion ? (
-        <div className="grid gap-1 rounded-md border border-anvil-attention/30 bg-anvil-attention/10 px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-anvil-attention">Open question</div>
-          <p className="break-words text-sm leading-6 text-foreground">{currentQuestion}</p>
-        </div>
-      ) : null}
-      {slice.evidence.length > 0 ? (
-        <div className="grid gap-1 rounded-md border bg-background px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Evidence</div>
-          <ul className="grid gap-1">
-            {slice.evidence.slice(0, 4).map((item) => (
-              <li key={item} className="break-words text-sm leading-6 text-foreground">
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+    </section>
+  );
+}
+
+function OpenQuestionBanner({ question }: { question: string }) {
+  return (
+    <section className="flex gap-3 rounded-lg border border-anvil-attention/30 bg-anvil-attention/10 px-4 py-3">
+      <CircleAlert className="mt-0.5 size-4 shrink-0 text-anvil-attention" />
+      <div className="min-w-0">
+        <div className="text-xs font-semibold uppercase tracking-wide text-anvil-attention">Open question</div>
+        <p className="mt-1 break-words text-sm leading-6 text-foreground">{question}</p>
+      </div>
     </section>
   );
 }
 
 function BriefRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-1 rounded-md border bg-background px-3 py-2">
+    <div className="grid gap-2 rounded-lg border bg-card/80 px-4 py-3 shadow-sm">
       <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       <p className="break-words text-sm leading-6 text-foreground">{value}</p>
     </div>
@@ -259,52 +259,131 @@ function EvidenceHunk({
   draft: string;
   setCommentDraft: (commentId: string, draft: string) => void;
 }) {
-  const inlineDraftLine = currentComment?.file === hunk.file ? currentComment.line : undefined;
+  const inlineDraftLine =
+    currentComment?.file === hunk.file && currentComment.hunkId === hunk.hunkId ? currentComment.line : undefined;
+  const commentAnchored = inlineDraftLine !== undefined;
+  const [expanded, setExpanded] = React.useState(false);
+  const [fullHunkVisible, setFullHunkVisible] = React.useState(false);
+  const diffVisible = commentAnchored || expanded;
   const hasNewInlineDraftLine = hunk.lines.some(
     (line) => String(line.newNumber) === String(inlineDraftLine) && line.kind !== "remove",
   );
+  const visibleLineIndexes = React.useMemo(
+    () =>
+      fullHunkVisible
+        ? hunk.lines.map((_, index) => index)
+        : compactDiffLineIndexes(hunk.lines, inlineDraftLine),
+    [fullHunkVisible, hunk.lines, inlineDraftLine],
+  );
+  const hiddenLineCount = diffVisible ? hunk.lines.length - visibleLineIndexes.length : hunk.lines.length;
+  const lastVisibleLineIndex = visibleLineIndexes[visibleLineIndexes.length - 1];
+  let previousLineIndex = -1;
 
   return (
     <div className="border-b last:border-b-0">
-      <div className="flex items-center justify-between gap-3 border-b bg-muted/25 px-3 py-1.5">
+      <div className={cn("flex items-center justify-between gap-3 bg-muted/25 px-3 py-1.5", diffVisible && "border-b")}>
         <div className="flex min-w-0 items-center gap-2">
           <FileCode2 className="size-4 text-primary" />
           <span className="truncate font-mono text-xs">{hunk.file}</span>
         </div>
-        <span className="text-xs text-muted-foreground">{hunk.hunkId.split("#").pop()}</span>
-      </div>
-      {hunk.lines.map((line, index) => (
-        <React.Fragment key={`${hunk.hunkId}:${index}`}>
-          <div
-            className={cn(
-              "grid min-w-full grid-cols-[48px_48px_24px_minmax(44rem,1fr)] font-mono text-xs leading-7",
-              line.kind === "add" && "bg-anvil-diff-add",
-              line.kind === "remove" && "bg-anvil-diff-remove",
-            )}
-          >
-            <span className="select-none pr-2 text-right text-muted-foreground">{line.oldNumber ?? ""}</span>
-            <span className="select-none pr-2 text-right text-muted-foreground">{line.newNumber ?? ""}</span>
-            <span
-              className={cn(
-                "select-none text-center",
-                line.kind === "add" && "text-anvil-success",
-                line.kind === "remove" && "text-destructive",
-              )}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs text-muted-foreground">{hunk.hunkId.split("#").pop()}</span>
+          {!diffVisible ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="rounded border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
-            </span>
-            <code className="whitespace-pre text-anvil-code">{line.text || " "}</code>
-          </div>
-          {currentComment && shouldRenderInlineDraft(line, inlineDraftLine, hasNewInlineDraftLine) ? (
-            <InlineDraftComment
-              comment={currentComment}
-              draft={draft}
-              onDraftChange={(nextDraft) => setCommentDraft(currentComment.id, nextDraft)}
-            />
+              Show diff
+            </button>
+          ) : hiddenLineCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setFullHunkVisible(true)}
+              className="rounded border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              Show full hunk
+            </button>
+          ) : fullHunkVisible && hunk.lines.length > COMPACT_DIFF_MAX_LINES ? (
+            <button
+              type="button"
+              onClick={() => setFullHunkVisible(false)}
+              className="rounded border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              Collapse context
+            </button>
           ) : null}
-        </React.Fragment>
-      ))}
+        </div>
+      </div>
+      {!diffVisible ? (
+        <div className="grid gap-1 px-3 py-2">
+          <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{hunk.reason}</p>
+          <span className="text-xs text-muted-foreground">
+            {hunk.lines.length} line{hunk.lines.length === 1 ? "" : "s"} hidden until expanded
+          </span>
+        </div>
+      ) : (
+        <>
+          {visibleLineIndexes.map((index) => {
+            const line = hunk.lines[index];
+            const hiddenBefore = index - previousLineIndex - 1;
+            previousLineIndex = index;
+            return (
+              <React.Fragment key={`${hunk.hunkId}:${index}`}>
+                {hiddenBefore > 0 ? (
+                  <HiddenLinesButton count={hiddenBefore} onExpand={() => setFullHunkVisible(true)} />
+                ) : null}
+                <div
+                  className={cn(
+                    "grid min-w-full grid-cols-[48px_48px_24px_minmax(44rem,1fr)] font-mono text-xs leading-7",
+                    line.kind === "add" && "bg-anvil-diff-add",
+                    line.kind === "remove" && "bg-anvil-diff-remove",
+                  )}
+                >
+                  <span className="select-none pr-2 text-right text-muted-foreground">{line.oldNumber ?? ""}</span>
+                  <span className="select-none pr-2 text-right text-muted-foreground">{line.newNumber ?? ""}</span>
+                  <span
+                    className={cn(
+                      "select-none text-center",
+                      line.kind === "add" && "text-anvil-success",
+                      line.kind === "remove" && "text-destructive",
+                    )}
+                  >
+                    {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+                  </span>
+                  <code className="whitespace-pre text-anvil-code">{line.text || " "}</code>
+                </div>
+                {currentComment && shouldRenderInlineDraft(line, inlineDraftLine, hasNewInlineDraftLine) ? (
+                  <InlineDraftComment
+                    comment={currentComment}
+                    draft={draft}
+                    onDraftChange={(nextDraft) => setCommentDraft(currentComment.id, nextDraft)}
+                  />
+                ) : null}
+              </React.Fragment>
+            );
+          })}
+          {lastVisibleLineIndex !== undefined && lastVisibleLineIndex < hunk.lines.length - 1 ? (
+            <HiddenLinesButton count={hunk.lines.length - 1 - lastVisibleLineIndex} onExpand={() => setFullHunkVisible(true)} />
+          ) : null}
+        </>
+      )}
     </div>
+  );
+}
+
+function HiddenLinesButton({ count, onExpand }: { count: number; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      className="grid min-w-full grid-cols-[48px_48px_24px_minmax(44rem,1fr)] border-y bg-muted/25 font-mono text-xs leading-7 text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <span />
+      <span />
+      <span className="text-center">...</span>
+      <span className="text-left">Show {count} hidden line{count === 1 ? "" : "s"}</span>
+    </button>
   );
 }
 
@@ -341,13 +420,69 @@ function InlineDraftComment({
           <span className="text-xs font-medium text-anvil-info">{comment.severity}</span>
         </div>
         <textarea
+          rows={6}
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
-          className="ml-9 min-h-16 w-[calc(100%-2.25rem)] resize-y rounded-md border border-input/70 bg-background/70 px-2.5 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-input hover:bg-background focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/25"
+          className="ml-9 min-h-40 w-[calc(100%-2.25rem)] resize-y rounded-md border border-input/70 bg-background/70 px-2.5 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-input hover:bg-background focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/25"
         />
       </div>
     </div>
   );
+}
+
+const COMPACT_DIFF_CONTEXT_RADIUS = 1;
+const COMMENT_DIFF_CONTEXT_RADIUS = 2;
+const COMPACT_DIFF_MAX_LINES = 12;
+
+function compactDiffLineIndexes(lines: Hunk["lines"], targetLine: number | string | undefined) {
+  if (lines.length <= COMPACT_DIFF_MAX_LINES) {
+    return lines.map((_, index) => index);
+  }
+
+  if (targetLine !== undefined && targetLine !== null) {
+    const targetIndexes = lines
+      .map((line, index) =>
+        String(line.newNumber) === String(targetLine) || String(line.oldNumber) === String(targetLine) ? index : -1,
+      )
+      .filter((index) => index >= 0);
+
+    if (targetIndexes.length > 0) {
+      return indexesAroundAnchors(lines.length, targetIndexes, COMMENT_DIFF_CONTEXT_RADIUS);
+    }
+  }
+
+  const anchors = new Set<number>();
+  lines.forEach((line, index) => {
+    if (line.kind !== "context") {
+      anchors.add(index);
+    }
+  });
+
+  if (anchors.size === 0) {
+    return lines.slice(0, COMPACT_DIFF_MAX_LINES).map((_, index) => index);
+  }
+
+  const visible = indexesAroundAnchors(lines.length, [...anchors], COMPACT_DIFF_CONTEXT_RADIUS);
+  if (visible.length <= COMPACT_DIFF_MAX_LINES) {
+    return visible;
+  }
+
+  return visible.slice(0, COMPACT_DIFF_MAX_LINES);
+}
+
+function indexesAroundAnchors(lineCount: number, anchors: number[], radius: number) {
+  const visible = new Set<number>();
+  for (const anchor of anchors) {
+    for (
+      let index = Math.max(0, anchor - radius);
+      index <= Math.min(lineCount - 1, anchor + radius);
+      index += 1
+    ) {
+      visible.add(index);
+    }
+  }
+
+  return [...visible].sort((a, b) => a - b);
 }
 
 function shouldRenderInlineDraft(
@@ -375,6 +510,17 @@ function getEvidenceHunks(slice: ReviewProgressSlice): Hunk[] {
       ],
     },
   ];
+}
+
+function sortEvidenceHunks(hunks: Hunk[], currentComment: ReviewProgressComment | undefined): Hunk[] {
+  if (!currentComment) return hunks;
+
+  const activeIndex = hunks.findIndex(
+    (hunk) => hunk.hunkId === currentComment.hunkId || (hunk.file === currentComment.file && hunk.lines.some((line) => String(line.newNumber ?? line.oldNumber) === String(currentComment.line))),
+  );
+  if (activeIndex <= 0) return hunks;
+
+  return [hunks[activeIndex], ...hunks.slice(0, activeIndex), ...hunks.slice(activeIndex + 1)];
 }
 
 function RiskBadge({ risk }: { risk: ReviewProgressSlice["risk"] }) {
@@ -433,7 +579,6 @@ function AgentButtons({
   onOpenAgent: (agent: ReviewAgent) => void;
 }) {
   const disabled = !worktree || state.status === "launching";
-  const terminalApp = resolveTerminalApp(settings);
   const [open, setOpen] = React.useState(false);
   const preferredAgent = settings.preferredAgent;
   const label = preferredAgent === "claude" ? "Claude" : "Codex";
@@ -441,7 +586,6 @@ function AgentButtons({
 
   return (
     <div className="grid shrink-0 justify-items-end gap-2">
-      <div className="text-xs text-muted-foreground">{worktree ? terminalApp : "Waiting for checkout"}</div>
       <div className="relative shrink-0">
         <div className="inline-flex h-8 overflow-hidden rounded-md border bg-card shadow-sm">
           <button

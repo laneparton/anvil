@@ -92,7 +92,8 @@ Reads the whole PR context.
 
 Outputs proposed slices:
 
-- title
+- short title label
+- concise decision question
 - why this belongs together
 - files/hunks needed
 - risk level

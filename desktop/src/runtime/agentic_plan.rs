@@ -37,10 +37,10 @@ const SLICE_PLAN_SCHEMA: &str = r#"{
         "type": "object",
         "properties": {
           "id": { "type": "string" },
-          "title": { "type": "string" },
+          "title": { "type": "string", "maxLength": 64 },
           "risk": { "type": "string", "enum": ["high", "medium", "low"] },
           "primaryRisk": { "type": "string" },
-          "decisionQuestion": { "type": "string" },
+          "decisionQuestion": { "type": "string", "maxLength": 180 },
           "whyTheseFilesTogether": { "type": "string" },
           "why": { "type": "string" },
           "acceptConditions": { "type": "array", "items": { "type": "string" } },
@@ -58,6 +58,8 @@ const SLICE_PLAN_SCHEMA: &str = r#"{
 }"#;
 
 const MAX_PRIMARY_SLICE_FILES: usize = 18;
+const MAX_SLICE_TITLE_CHARS: usize = 64;
+const MAX_DECISION_QUESTION_CHARS: usize = 180;
 const PLANNER_REPAIR_ATTEMPTS: usize = 2;
 const DEFAULT_SLICE_REVIEW_CONCURRENCY: usize = 2;
 
@@ -541,8 +543,9 @@ Required planning contract:
 - PR identity: preserve repo, PR number, title, URL, baseRef, headRef, and headSha exactly from context.
 - semantic file groups: split by reviewer decision/risk surface, not directory, package, framework, or broad topic label.
 - risk ranking: high-risk runtime, API, auth, storage, lifecycle, data-loss, concurrency, and public contract slices come before docs, examples, generated files, changesets, and lockfiles.
-- trust-anchor hunks: slice titles and why fields must be grounded in concrete files/hunks from context.
-- decisionQuestion: each slice must answer one reviewer decision question.
+- trust-anchor hunks: slice fields must be grounded in concrete files/hunks from context.
+- title: use a compact label, not a sentence or question. Keep it under 64 characters and 7 words, for example "Migration skip verification" or "Webhook lock ordering".
+- decisionQuestion: each slice must answer one reviewer decision question. Keep it under 180 characters and put the detailed reasoning in why.
 - primaryRisk: each slice must name one dominant risk. If there are multiple unrelated dominant risks, split the slice.
 - whyTheseFilesTogether: explain the shared invariant or code path that makes the files belong together.
 - why: describe the user-visible behavior, invariant, or failure mode the reviewer must understand. Do not list files one by one or restate hunk counts.
@@ -577,6 +580,8 @@ Repair rules:
 - Every changed file must appear exactly once.
 - Split slices when a bucket contains multiple independent review decisions or multiple unrelated dominant risks.
 - Keep files together only when whyTheseFilesTogether can name a shared invariant, code path, API contract, or proof obligation.
+- Rewrite titles that are full sentences, questions, quoted diff lines, or longer than 64 characters. The title is only a compact label; put the review question in decisionQuestion and the explanation in why.
+- Rewrite decisionQuestion values longer than 180 characters. Keep the question concise and move details into why.
 - Rewrite why fields that only enumerate files, hunk ids, or counts. A useful why explains the behavior, invariant, or failure mode under review.
 - Do not encode repo-specific or PR-specific golden answers; infer boundaries from changed files and hunk headers.
 
@@ -762,10 +767,10 @@ fn planned_slice_payloads(slices: &[Value]) -> Vec<Value> {
         .map(|slice| {
             json!({
                 "id": slice.get("id").cloned().unwrap_or_else(|| json!("review")),
-                "title": slice.get("title").cloned().unwrap_or_else(|| json!("Review changes")),
+                "title": normalized_slice_title(slice),
                 "risk": slice.get("risk").cloned().unwrap_or_else(|| json!("medium")),
                 "primaryRisk": slice.get("primaryRisk").cloned().unwrap_or_else(|| json!("")),
-                "decisionQuestion": slice.get("decisionQuestion").cloned().unwrap_or_else(|| json!("")),
+                "decisionQuestion": normalized_decision_question(slice),
                 "whyTheseFilesTogether": slice.get("whyTheseFilesTogether").cloned().unwrap_or_else(|| json!("")),
                 "why": slice.get("why").cloned().unwrap_or_else(|| json!("Changed files grouped by Codex app-server.")),
                 "acceptConditions": slice.get("acceptConditions").cloned().unwrap_or_else(|| json!([])),
@@ -774,6 +779,54 @@ fn planned_slice_payloads(slices: &[Value]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn normalized_slice_title(slice: &Value) -> String {
+    compact_text_field(slice, "title", "Review changes", MAX_SLICE_TITLE_CHARS)
+}
+
+fn normalized_decision_question(slice: &Value) -> String {
+    compact_text_field(slice, "decisionQuestion", "", MAX_DECISION_QUESTION_CHARS)
+}
+
+fn compact_text_field(slice: &Value, field: &str, fallback: &str, max_chars: usize) -> String {
+    let value = slice
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(fallback);
+    truncate_text(value, max_chars)
+}
+
+fn truncate_text(value: &str, max_chars: usize) -> String {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+
+    let suffix = "...";
+    let limit = max_chars.saturating_sub(suffix.len()).max(1);
+    let mut output = String::new();
+    for word in normalized.split_whitespace() {
+        let next_len =
+            output.chars().count() + usize::from(!output.is_empty()) + word.chars().count();
+        if next_len > limit {
+            break;
+        }
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        output.push_str(word);
+    }
+
+    if output.is_empty() {
+        output = normalized.chars().take(limit).collect();
+    }
+
+    while output.ends_with([' ', ',', ';', ':', '-', '.']) {
+        output.pop();
+    }
+    format!("{output}{suffix}")
 }
 
 fn validate_slice_plan_contract(plan: &Value, context: &PlanContext) -> Vec<String> {
@@ -837,6 +890,27 @@ fn validate_slice_plan_contract(plan: &Value, context: &PlanContext) -> Vec<Stri
 }
 
 fn validate_planner_slice_contract(slice: &Value, id: &str, failures: &mut Vec<String>) {
+    let title = slice
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if title.trim().is_empty() {
+        failures.push(format!("slice `{id}` is missing `title`"));
+    }
+    validate_text_length(
+        "title",
+        title,
+        MAX_SLICE_TITLE_CHARS,
+        "use a compact label and move details into decisionQuestion or why",
+        id,
+        failures,
+    );
+    if title.trim_end().ends_with('?') {
+        failures.push(format!(
+            "slice `{id}` title is a question; use a compact label and put the question in `decisionQuestion`"
+        ));
+    }
+
     for field in [
         "primaryRisk",
         "decisionQuestion",
@@ -848,12 +922,39 @@ fn validate_planner_slice_contract(slice: &Value, id: &str, failures: &mut Vec<S
             failures.push(format!("slice `{id}` is missing `{field}`"));
         }
     }
+    validate_text_length(
+        "decisionQuestion",
+        slice
+            .get("decisionQuestion")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        MAX_DECISION_QUESTION_CHARS,
+        "keep the review question concise and move supporting detail into why",
+        id,
+        failures,
+    );
 
     if string_array(slice.get("acceptConditions")).is_empty() {
         failures.push(format!("slice `{id}` has no planner acceptConditions"));
     }
     if string_array(slice.get("commentConditions")).is_empty() {
         failures.push(format!("slice `{id}` has no planner commentConditions"));
+    }
+}
+
+fn validate_text_length(
+    field: &str,
+    value: &str,
+    max_chars: usize,
+    hint: &str,
+    id: &str,
+    failures: &mut Vec<String>,
+) {
+    let char_count = value.chars().count();
+    if char_count > max_chars {
+        failures.push(format!(
+            "slice `{id}` `{field}` is {char_count} characters; keep it <= {max_chars} characters and {hint}"
+        ));
     }
 }
 
@@ -957,10 +1058,10 @@ fn merge_review_plan(context: &PlanContext, planner: &Value, reviews: &[Value]) 
 fn build_plan_slice(context: &PlanContext, slice: &Value, review: Option<&Value>) -> Value {
     json!({
         "id": slice.get("id").cloned().unwrap_or_else(|| json!("review")),
-        "title": slice.get("title").cloned().unwrap_or_else(|| json!("Review changes")),
+        "title": normalized_slice_title(slice),
         "risk": slice.get("risk").cloned().unwrap_or_else(|| json!("medium")),
         "primaryRisk": slice.get("primaryRisk").cloned().unwrap_or_else(|| json!("")),
-        "decisionQuestion": slice.get("decisionQuestion").cloned().unwrap_or_else(|| json!("")),
+        "decisionQuestion": normalized_decision_question(slice),
         "whyTheseFilesTogether": slice.get("whyTheseFilesTogether").cloned().unwrap_or_else(|| json!("")),
         "status": review.and_then(|value| value.get("status")).cloned().unwrap_or_else(|| json!("needs-human")),
         "deferred": review.and_then(|value| value.get("deferred")).cloned().unwrap_or_else(|| json!(false)),
@@ -1149,4 +1250,64 @@ fn diff_lines_for_hunk(hunk: &super::types::DiffHunk) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncates_slice_text_at_word_boundary() {
+        let value = truncate_text(
+            "This title is much too long for the review stage and should be compacted",
+            32,
+        );
+
+        assert_eq!(value, "This title is much too long...");
+        assert!(value.chars().count() <= 32);
+    }
+
+    #[test]
+    fn normalizes_overlong_planner_slice_fields() {
+        let slice = json!({
+            "title": "This narrows `include_dirs` to only the new databricks-insight-ai root",
+            "decisionQuestion": "Does this repository-level builder configuration change make the new deployment visible to tooling without silently excluding existing infrastructure roots from validation coverage?"
+        });
+
+        assert_eq!(
+            normalized_slice_title(&slice),
+            "This narrows `include_dirs` to only the new..."
+        );
+        assert!(
+            normalized_decision_question(&slice).chars().count() <= MAX_DECISION_QUESTION_CHARS
+        );
+    }
+
+    #[test]
+    fn validates_planner_title_and_question_bounds() {
+        let slice = json!({
+            "id": "slice-1",
+            "title": "Does this extremely long title pretend to be the entire reviewer decision question instead of a compact label that belongs in the title field?",
+            "primaryRisk": "Builder configuration coverage",
+            "decisionQuestion": "Does this extremely long decision question include enough extra supporting detail that should have gone into the why field instead of making the review stage header carry the whole explanation and wrap across the page in a way that makes the interface harder to scan?",
+            "whyTheseFilesTogether": "They share the same builder validation path.",
+            "why": "The reviewer must check that the builder configuration still covers the intended module roots.",
+            "acceptConditions": ["Existing roots are still covered or intentionally migrated."],
+            "commentConditions": ["Comment if validation silently drops active roots."],
+            "files": ["terragrunt/tgbuilder.yaml"]
+        });
+        let mut failures = Vec::new();
+
+        validate_planner_slice_contract(&slice, "slice-1", &mut failures);
+
+        assert!(failures
+            .iter()
+            .any(|failure| failure.contains("`title` is")));
+        assert!(failures
+            .iter()
+            .any(|failure| failure.contains("title is a question")));
+        assert!(failures
+            .iter()
+            .any(|failure| failure.contains("`decisionQuestion` is")));
+    }
 }

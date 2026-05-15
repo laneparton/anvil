@@ -136,7 +136,9 @@
         },
         "title": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Compact slice label, not a full review question or explanation."
         },
         "risk": {
           "$ref": "#/definitions/risk"
@@ -155,7 +157,9 @@
           "type": "string"
         },
         "decisionQuestion": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 180,
+          "description": "Concise reviewer decision question. Supporting detail belongs in why."
         },
         "whyTheseFilesTogether": {
           "type": "string"

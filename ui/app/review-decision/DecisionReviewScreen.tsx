@@ -1,5 +1,16 @@
 import * as React from "react";
-import { CheckCircle2, ChevronDown, Cloud, GitPullRequest, MessageSquarePlus, Settings, ShieldCheck, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Cloud,
+  GitPullRequest,
+  MessageSquarePlus,
+  Settings,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 
 import { AppShell } from "@/app/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -151,7 +162,7 @@ export function DecisionReviewScreen({
         </>
       }
     >
-      <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] overflow-hidden">
+      <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
         <main className="min-h-0 overflow-y-auto p-5">
           {showingSummary ? (
             <SubmissionPreviewMain
@@ -168,24 +179,31 @@ export function DecisionReviewScreen({
               submitLabel={submitLabel}
             />
           ) : (
-            <DecisionStage
-              active={active}
-              activeIndex={activeIndex}
-              activePending={activePending}
-              agentLaunchState={agentLaunchState}
-              appSettings={appSettings}
-              currentComment={currentComment}
-              handleCommentDecision={handleCommentDecision}
-              handleOpenAgent={handleOpenAgent}
-              markActiveReviewed={markActiveReviewed}
-              openComments={openComments}
-              prepareEvent={prepareEvent}
-              reviewWorktree={reviewWorktree}
-              selectedCommentId={selectedCommentId}
-              setSelectedCommentId={setSelectedCommentId}
-              setCommentDraft={progress.setCommentDraft}
-              totalSlices={progress.slices.length}
-            />
+            <div className="grid gap-5">
+              <DecisionStage
+                active={active}
+                activeIndex={activeIndex}
+                activePending={activePending}
+                agentLaunchState={agentLaunchState}
+                appSettings={appSettings}
+                currentComment={currentComment}
+                handleCommentDecision={handleCommentDecision}
+                handleOpenAgent={handleOpenAgent}
+                markActiveReviewed={markActiveReviewed}
+                openComments={openComments}
+                prepareEvent={prepareEvent}
+                reviewWorktree={reviewWorktree}
+                selectedCommentId={selectedCommentId}
+                setSelectedCommentId={setSelectedCommentId}
+                setCommentDraft={progress.setCommentDraft}
+                totalSlices={progress.slices.length}
+              />
+              <SliceNavigationFooter
+                activeIndex={activeIndex}
+                slices={progress.slices}
+                onSelect={setActiveId}
+              />
+            </div>
           )}
         </main>
 
@@ -206,6 +224,58 @@ export function DecisionReviewScreen({
         </div>
       ) : null}
     </AppShell>
+  );
+}
+
+function SliceNavigationFooter({
+  activeIndex,
+  slices,
+  onSelect,
+}: {
+  activeIndex: number;
+  slices: ReviewProgressSlice[];
+  onSelect: (sliceId: string) => void;
+}) {
+  const previous = activeIndex > 0 ? slices[activeIndex - 1] : undefined;
+  const next = activeIndex < slices.length - 1 ? slices[activeIndex + 1] : undefined;
+
+  return (
+    <nav className="grid grid-cols-[1fr_auto_1fr] items-center border-t px-2 py-5" aria-label="Slice navigation">
+      <button
+        type="button"
+        disabled={!previous}
+        onClick={() => previous && onSelect(previous.id)}
+        className="inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+      >
+        <ChevronLeft className="size-4" />
+        Previous slice
+      </button>
+
+      <div className="flex items-center justify-center gap-2">
+        {slices.map((slice, index) => (
+          <button
+            key={slice.id}
+            type="button"
+            onClick={() => onSelect(slice.id)}
+            aria-label={`Open slice ${index + 1}`}
+            className={cn(
+              "size-2 rounded-full transition-colors",
+              index === activeIndex ? "bg-primary" : "bg-muted hover:bg-muted-foreground/35",
+            )}
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        disabled={!next}
+        onClick={() => next && onSelect(next.id)}
+        className="ml-auto inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-35"
+      >
+        Next slice
+        <ChevronRight className="size-4" />
+      </button>
+    </nav>
   );
 }
 

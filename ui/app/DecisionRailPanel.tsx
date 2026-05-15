@@ -206,9 +206,10 @@ function DecisionRail({
                   PR comment draft
                 </span>
                 <textarea
+                  rows={8}
                   value={draft}
                   onChange={(event) => onSetCommentDraft(comment.id, event.target.value)}
-                  className="min-h-36 resize-y rounded-md border bg-background p-2 text-sm leading-5 outline-none focus:ring-2 focus:ring-ring"
+                  className="min-h-44 resize-y rounded-md border bg-background p-2 text-sm leading-5 outline-none focus:ring-2 focus:ring-ring"
                 />
               </label>
               <Button
