@@ -1,25 +1,17 @@
 import * as React from "react";
 
-import {
-  LauncherScreen,
-  type ReviewInboxPullRequest,
-} from "@/app/LauncherScreen";
+import type { ReviewInboxPullRequest } from "@/app/LauncherScreen";
 import { PreparingScreen } from "@/app/PreparingScreen";
+import { ReviewQueueWorkbench } from "@/app/ReviewQueueWorkbench";
 import { ReviewScreen } from "@/app/ReviewScreen";
 import { SettingsScreen } from "@/app/SettingsScreen";
 import { useReviewPreparation } from "@/app/useReviewPreparation";
 import { filterActionableQuestions } from "@/lib/review-questions";
-import {
-  type CommentDecision,
-  type ReviewProgressComment,
-  useReviewProgress,
-} from "@/lib/review-progress";
+import { openProviderPullRequestUrl, resolveProviderPullRequestLink } from "@/lib/provider-links";
+import { type CommentDecision, type ReviewProgressComment, useReviewProgress } from "@/lib/review-progress";
 import type { ReviewPlan } from "@/lib/review-types";
-import {
-  getReviewPullRequestNumber,
-  normalizeReviewSource,
-} from "@/lib/review-inbox";
-import { findNextReviewSlice, groupComments } from "@/lib/review-workflow";
+import { getReviewPullRequestNumber, normalizeReviewSource } from "@/lib/review-inbox";
+import { findNextReviewSlice } from "@/lib/review-workflow";
 
 import { useAppSettings } from "./useAppSettings";
 import { useReviewAgentLaunch } from "./useReviewAgentLaunch";
@@ -109,7 +101,6 @@ export function App() {
 
   const {
     changeActiveFilter,
-    changeSourceFilter,
     launcherError,
     launcherLoading,
     launcherRefreshing,
@@ -119,6 +110,7 @@ export function App() {
     reviewInboxSearch,
     reviewInboxSourceFilter,
     selectedInboxRow,
+    selectedInboxHydrating,
     selectedPullRequest,
     selectedRepo,
     selectedSource,
@@ -127,6 +119,7 @@ export function App() {
     setSelectedPullRequest,
     setSelectedRepo,
     setSelectedSource,
+    changeSourceFilter,
   } = useReviewInbox({
     appSettings,
     settingsLoaded,
@@ -144,7 +137,8 @@ export function App() {
     [active.comments],
   );
   const currentComment = openComments.find((comment) => comment.id === selectedCommentId) ?? openComments[0];
-  const commentsByHunk = React.useMemo(() => groupComments(openComments), [openComments]);
+  const selectedComment = active.comments.find((comment) => comment.id === selectedCommentId);
+  const activeComment = selectedComment ?? currentComment;
   const activeIndex = progress.slices.findIndex((slice) => slice.id === active.id);
   const activePending = pendingSliceIds.has(active.id);
   const highRiskPendingCount = progress.slices.filter(
@@ -152,14 +146,32 @@ export function App() {
   ).length;
   const deferredSlices = progress.slices.filter((slice) => slice.deferred);
   const acknowledgedDeferredCount = deferredSlices.filter((slice) => slice.reviewed).length;
-  const reviewComplete = pendingSliceIds.size === 0 && progress.counts.openComments === 0 && progress.counts.unreviewedSlices === 0;
+  const reviewComplete =
+    pendingSliceIds.size === 0 && progress.counts.openComments === 0 && progress.counts.unreviewedSlices === 0;
   const effectiveSelectedPullRequest =
     prepareRequest?.pullRequest ?? getReviewPullRequestNumber(selectedInboxRow) ?? "";
   const effectiveSelectedRepo = prepareRequest?.repo ?? selectedInboxRow?.repo ?? selectedRepo;
   const effectiveSelectedSource =
-    normalizeReviewSource(prepareRequest?.source) ??
-    normalizeReviewSource(selectedInboxRow?.source) ??
-    selectedSource;
+    normalizeReviewSource(prepareRequest?.source) ?? normalizeReviewSource(selectedInboxRow?.source) ?? selectedSource;
+  const providerPullRequestLink = React.useMemo(
+    () =>
+      resolveProviderPullRequestLink({
+        source: effectiveSelectedSource,
+        repo: reviewPlan.pr.repo || effectiveSelectedRepo,
+        pullRequest: reviewPlan.pr.number || effectiveSelectedPullRequest,
+        preferredUrls: [reviewPlan.pr.url, prepareRequest?.url, selectedInboxRow?.url],
+      }),
+    [
+      effectiveSelectedPullRequest,
+      effectiveSelectedRepo,
+      effectiveSelectedSource,
+      prepareRequest?.url,
+      reviewPlan.pr.number,
+      reviewPlan.pr.repo,
+      reviewPlan.pr.url,
+      selectedInboxRow?.url,
+    ],
+  );
 
   const { agentLaunchState, handleOpenAgent } = useReviewAgentLaunch({
     active,
@@ -183,34 +195,57 @@ export function App() {
   resetSubmitStateRef.current = () => setSubmitState({ status: "idle" });
 
   React.useEffect(() => {
-    setSelectedCommentId(undefined);
-  }, [active.id]);
-
-  React.useEffect(() => {
-    if (selectedCommentId && !openComments.some((comment) => comment.id === selectedCommentId)) {
+    if (selectedCommentId && !active.comments.some((comment) => comment.id === selectedCommentId)) {
       setSelectedCommentId(undefined);
     }
-  }, [openComments, selectedCommentId]);
+  }, [active.comments, selectedCommentId]);
 
-  const markActiveReviewed = React.useCallback(() => {
-    const reviewedIds = new Set(progress.state.reviewedSliceIds);
-    reviewedIds.add(active.id);
+  const selectReviewSlice = React.useCallback(
+    (sliceId: string) => {
+      const nextSlice = progress.slices.find((slice) => slice.id === sliceId);
+      const nextComment =
+        nextSlice?.comments.find((comment) => comment.decision === "open") ??
+        nextSlice?.comments.find((comment) => comment.decision === "converted" || comment.decision === "deferred") ??
+        nextSlice?.comments.find((comment) => comment.decision === "dismissed" || comment.decision === "resolved");
 
-    progress.setSliceReviewed(active.id, true);
-    const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
+      setActiveId(sliceId);
+      setSelectedCommentId(nextComment?.id);
+    },
+    [progress.slices],
+  );
 
-    if (nextSlice) {
-      setActiveId(nextSlice.id);
-    }
-  }, [active.id, progress]);
+  const markActiveReviewed = React.useCallback(
+    (deferred = false) => {
+      const reviewedIds = new Set(progress.state.reviewedSliceIds);
+      reviewedIds.add(active.id);
+
+      progress.setSliceDeferred(active.id, deferred);
+      progress.setSliceReviewed(active.id, true);
+      const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
+
+      if (nextSlice) {
+        setActiveId(nextSlice.id);
+      }
+    },
+    [active.id, progress],
+  );
 
   const handleCommentDecision = React.useCallback(
-    (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => {
+    (comment: ReviewProgressComment, decision: CommentDecision) => {
+      if (decision === "open") {
+        progress.setCommentDecision(comment.id, "open");
+        progress.setSliceReviewed(active.id, false);
+        progress.setSliceDeferred(active.id, false);
+        setSelectedCommentId(comment.id);
+        return;
+      }
+
       const reviewedIds = new Set(progress.state.reviewedSliceIds);
       const remainingOpenComments = active.comments.filter(
         (candidate) => candidate.id !== comment.id && candidate.decision === "open",
       ).length;
-      const finishedSlice = remainingOpenComments === 0 && filterActionableQuestions(active.remainingQuestions).length === 0;
+      const finishedSlice =
+        remainingOpenComments === 0 && filterActionableQuestions(active.remainingQuestions).length === 0;
 
       progress.setCommentDecision(comment.id, decision);
       setSelectedCommentId(undefined);
@@ -220,6 +255,7 @@ export function App() {
       }
 
       reviewedIds.add(active.id);
+      progress.setSliceDeferred(active.id, false);
       progress.setSliceReviewed(active.id, true);
 
       const nextSlice = findNextReviewSlice(progress.slices, active.id, reviewedIds);
@@ -244,7 +280,7 @@ export function App() {
 
   if (stage === "launcher") {
     return (
-      <LauncherScreen
+      <ReviewQueueWorkbench
         pullRequests={reviewInboxRows}
         selectedRowId={selectedPullRequest}
         activeFilter={reviewInboxFilter}
@@ -252,13 +288,28 @@ export function App() {
         searchQuery={reviewInboxSearch}
         loading={launcherLoading}
         refreshing={launcherRefreshing}
+        selectedDetailsLoading={selectedInboxHydrating}
         error={launcherError}
-        onSelectRow={(_, pullRequest) => selectInboxRow(pullRequest)}
+        providersEnabled={
+          settingsLoaded && (appSettings.enabledProviders.github || appSettings.enabledProviders.bitbucket)
+        }
+        onSelectRow={selectInboxRow}
         onActiveFilterChange={changeActiveFilter}
         onSourceFilterChange={changeSourceFilter}
         onSearchQueryChange={setReviewInboxSearch}
         onRefresh={refreshInbox}
         onOpenSettings={openSettings}
+        onOpenProvider={(pullRequest) => {
+          const link = resolveProviderPullRequestLink({
+            source: normalizeReviewSource(pullRequest.source) ?? selectedSource,
+            repo: pullRequest.repo,
+            pullRequest: getReviewPullRequestNumber(pullRequest) ?? "",
+            preferredUrls: [pullRequest.url],
+          });
+          if (link) {
+            void openProviderPullRequestUrl(link.url);
+          }
+        }}
         onPrepare={(pullRequest) => {
           const target = pullRequest ?? selectedInboxRow;
           preparePullRequest(target, {
@@ -295,8 +346,7 @@ export function App() {
       agentLaunchState={agentLaunchState}
       appSettings={appSettings}
       clearReview={clearReview}
-      commentsByHunk={commentsByHunk}
-      currentComment={currentComment}
+      currentComment={activeComment}
       deferredSlices={deferredSlices}
       handleCommentDecision={handleCommentDecision}
       handleOpenAgent={handleOpenAgent}
@@ -307,8 +357,16 @@ export function App() {
         setStage("launcher");
       }}
       onOpenSettings={openSettings}
+      onOpenProvider={
+        providerPullRequestLink
+          ? () => {
+              void openProviderPullRequestUrl(providerPullRequestLink.url);
+            }
+          : undefined
+      }
       openComments={openComments}
-      pendingSliceIds={pendingSliceIds}
+      pendingSliceCount={pendingSliceIds.size}
+      providerPullRequestLink={providerPullRequestLink}
       prepareEvent={prepareState.events[prepareState.events.length - 1]}
       progress={progress}
       pullRequest={reviewPlan.pr.number}
@@ -317,7 +375,7 @@ export function App() {
       reviewTitle={reviewPlan.pr.title}
       reviewWorktree={reviewWorktree}
       selectedCommentId={selectedCommentId}
-      setActiveId={setActiveId}
+      setActiveId={selectReviewSlice}
       setSelectedCommentId={setSelectedCommentId}
       submitReview={submitReview}
       submitState={submitState}
@@ -347,6 +405,7 @@ function preparePullRequest(
       repo: string;
       pullRequest: string;
       title?: string;
+      url?: string;
     }) => void;
   },
 ) {
@@ -364,6 +423,7 @@ function preparePullRequest(
     repo,
     pullRequest: pullRequestNumber,
     title: target.title,
+    url: target.url,
   });
   setSubmitState({ status: "idle" });
   setStage("preparing");

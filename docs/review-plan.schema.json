@@ -128,7 +128,18 @@
     "slice": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "risk", "why", "files"],
+      "required": [
+        "id",
+        "title",
+        "risk",
+        "primaryRisk",
+        "decisionQuestion",
+        "whyTheseFilesTogether",
+        "why",
+        "acceptConditions",
+        "commentConditions",
+        "files"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -136,7 +147,9 @@
         },
         "title": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Compact slice label, not a full review question or explanation."
         },
         "risk": {
           "$ref": "#/definitions/risk"
@@ -155,7 +168,10 @@
           "type": "string"
         },
         "decisionQuestion": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "description": "Concise reviewer decision question. Supporting detail belongs in why."
         },
         "whyTheseFilesTogether": {
           "type": "string"
@@ -210,6 +226,7 @@
         },
         "acceptConditions": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
@@ -218,6 +235,7 @@
         },
         "commentConditions": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1

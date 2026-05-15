@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createPlannedReviewPlan,
+  findInitialReviewSliceId,
   getPlannedSlices,
   mergeStreamingSlice,
   normalizeReviewPlan,
@@ -16,6 +17,7 @@ const request: PendingPrepareRequest = {
   repo: "owner/repo",
   pullRequest: "42",
   title: "Fix auth callback",
+  url: "https://github.com/owner/repo/pull/42",
 };
 
 function slice(overrides: Partial<Slice> = {}): Slice {
@@ -91,12 +93,13 @@ describe("review preparation helpers", () => {
     const plannedSlices: PlannedSlice[] = [
       { id: "auth", title: "Auth", risk: "high", why: "Callback", files: ["src/auth.ts"] },
     ];
-    const created = createPlannedReviewPlan(plan(), plannedSlices, request);
+    const created = createPlannedReviewPlan(plan(), plannedSlices, request, new Set());
 
     expect(created.pr).toEqual({
       repo: "owner/repo",
       number: 42,
       title: "Fix auth callback",
+      url: "https://github.com/owner/repo/pull/42",
     });
     expect(created.slices[0]).toMatchObject({
       id: "auth",
@@ -104,6 +107,120 @@ describe("review preparation helpers", () => {
       deferred: false,
       filesReviewed: [],
       inlineComments: [],
+    });
+  });
+
+  it("merges planner metadata without replacing streamed slice findings", () => {
+    const streamed = slice({
+      id: "auth",
+      title: "Original streamed title",
+      risk: "medium",
+      files: ["src/auth.ts"],
+      filesReviewed: ["src/auth.ts"],
+      hunks: [{ file: "src/auth.ts", hunkId: "src/auth.ts#h1", reason: "Callback", lines: [] }],
+      inlineComments: [
+        {
+          file: "src/auth.ts",
+          hunkId: "src/auth.ts#h1",
+          line: 42,
+          severity: "blocking",
+          body: "Guard duplicate redemption.",
+        },
+      ],
+      remainingQuestions: ["Is replay covered?"],
+      evidence: ["src/auth.ts:42"],
+    });
+    const created = createPlannedReviewPlan(
+      plan({
+        completion: {
+          ...plan().completion,
+          reviewedFiles: 1,
+          reviewedHunks: 1,
+          blockingComments: 1,
+          openQuestions: 1,
+        },
+        slices: [streamed],
+      }),
+      [
+        { id: "auth", title: "Auth callback", risk: "high", why: "Planner metadata", files: ["src/auth.ts"] },
+        { id: "docs", title: "Docs", risk: "low", why: "Docs metadata", files: ["README.md"] },
+      ],
+      request,
+      new Set(["auth"]),
+    );
+
+    const auth = created.slices.find((item) => item.id === "auth");
+    expect(auth).toMatchObject({
+      title: "Auth callback",
+      risk: "high",
+      why: "Planner metadata",
+      filesReviewed: ["src/auth.ts"],
+      evidence: ["src/auth.ts:42"],
+    });
+    expect(auth?.hunks).toHaveLength(1);
+    expect(auth?.inlineComments).toHaveLength(1);
+    expect(auth?.remainingQuestions).toEqual(["Is replay covered?"]);
+  });
+
+  it("does not merge stale findings when planner metadata arrives first for a reused slice id", () => {
+    const stalePriorSlice = slice({
+      id: "auth",
+      title: "Prior auth review",
+      risk: "medium",
+      files: ["src/old-auth.ts"],
+      filesReviewed: ["src/old-auth.ts"],
+      hunks: [{ file: "src/old-auth.ts", hunkId: "src/old-auth.ts#h1", reason: "Old callback", lines: [] }],
+      inlineComments: [
+        {
+          file: "src/old-auth.ts",
+          hunkId: "src/old-auth.ts#h1",
+          line: 12,
+          severity: "blocking",
+          body: "Old finding from a previous review.",
+        },
+      ],
+      remainingQuestions: ["Old unresolved question?"],
+      evidence: ["src/old-auth.ts:12"],
+    });
+
+    const created = createPlannedReviewPlan(
+      plan({
+        completion: {
+          status: "blocked",
+          reviewedFiles: 1,
+          totalFiles: 1,
+          reviewedHunks: 1,
+          totalHunks: 1,
+          blockingComments: 1,
+          openQuestions: 1,
+        },
+        slices: [stalePriorSlice],
+      }),
+      [{ id: "auth", title: "Auth callback", risk: "high", why: "New planner metadata", files: ["src/auth.ts"] }],
+      request,
+      new Set(),
+    );
+
+    expect(created.slices[0]).toMatchObject({
+      id: "auth",
+      title: "Auth callback",
+      risk: "high",
+      why: "New planner metadata",
+      files: ["src/auth.ts"],
+      filesReviewed: [],
+      hunks: [],
+      inlineComments: [],
+      remainingQuestions: [],
+      evidence: [],
+    });
+    expect(created.completion).toMatchObject({
+      status: "needs-human",
+      reviewedFiles: 0,
+      totalFiles: 1,
+      reviewedHunks: 0,
+      totalHunks: 0,
+      blockingComments: 0,
+      openQuestions: 0,
     });
   });
 
@@ -140,5 +257,44 @@ describe("review preparation helpers", () => {
       blockingComments: 1,
       openQuestions: 1,
     });
+  });
+
+  it("starts review on the first slice with findings or questions", () => {
+    const initialId = findInitialReviewSliceId(
+      plan({
+        slices: [
+          slice({ id: "setup", risk: "high", inlineComments: [], remainingQuestions: [] }),
+          slice({
+            id: "auth",
+            risk: "medium",
+            inlineComments: [
+              {
+                file: "src/auth.ts",
+                hunkId: "src/auth.ts#h1",
+                line: 12,
+                severity: "blocking",
+                body: "Guard duplicate redemption.",
+              },
+            ],
+            remainingQuestions: [],
+          }),
+        ],
+      }),
+    );
+
+    expect(initialId).toBe("auth");
+  });
+
+  it("falls back to the first non-deferred slice when no slice has open work", () => {
+    const initialId = findInitialReviewSliceId(
+      plan({
+        slices: [
+          slice({ id: "docs", risk: "low", deferred: true }),
+          slice({ id: "runtime", risk: "high", inlineComments: [], remainingQuestions: [] }),
+        ],
+      }),
+    );
+
+    expect(initialId).toBe("runtime");
   });
 });

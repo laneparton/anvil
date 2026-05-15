@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { filterActionableQuestions } from "./review-questions";
 import type { InlineComment, ReviewPlan, Slice } from "./review-types";
 
-export type CommentDecision = "open" | "resolved" | "dismissed" | "converted";
+export type CommentDecision = "open" | "resolved" | "dismissed" | "deferred" | "converted";
 
 export type ReviewProgressState = {
   reviewedSliceIds: string[];
+  deferredSliceIds: string[];
   commentDecisions: Record<string, CommentDecision>;
   commentDrafts: Record<string, string>;
 };
@@ -18,6 +19,7 @@ export type ReviewProgressCounts = {
   openComments: number;
   resolvedComments: number;
   dismissedComments: number;
+  deferredComments: number;
   convertedComments: number;
   actionedComments: number;
   remainingComments: number;
@@ -60,6 +62,7 @@ export type UseReviewProgressResult = {
   isSliceReviewed: (sliceId: string) => boolean;
   getCommentDecision: (commentId: string) => CommentDecision;
   setSliceReviewed: (sliceId: string, reviewed: boolean) => void;
+  setSliceDeferred: (sliceId: string, deferred: boolean) => void;
   toggleSliceReviewed: (sliceId: string) => void;
   markAllSlicesReviewed: () => void;
   resetReviewedSlices: () => void;
@@ -80,6 +83,7 @@ const COMMENT_DECISIONS: CommentDecision[] = [
   "open",
   "resolved",
   "dismissed",
+  "deferred",
   "converted",
 ];
 
@@ -94,6 +98,7 @@ function getSlices(input: ReviewPlan | Slice[]): Slice[] {
 function createEmptyState(): ReviewProgressState {
   return {
     reviewedSliceIds: [],
+    deferredSliceIds: [],
     commentDecisions: {},
     commentDrafts: {},
   };
@@ -105,6 +110,7 @@ function mergeState(
 ): ReviewProgressState {
   return {
     reviewedSliceIds: next?.reviewedSliceIds ?? base.reviewedSliceIds,
+    deferredSliceIds: next?.deferredSliceIds ?? base.deferredSliceIds,
     commentDecisions: next?.commentDecisions ?? base.commentDecisions,
     commentDrafts: next?.commentDrafts ?? base.commentDrafts,
   };
@@ -146,6 +152,9 @@ function sanitizeState(input: Partial<ReviewProgressState>): ReviewProgressState
   const reviewedSliceIds = Array.isArray(input.reviewedSliceIds)
     ? input.reviewedSliceIds.filter((id): id is string => typeof id === "string")
     : [];
+  const deferredSliceIds = Array.isArray(input.deferredSliceIds)
+    ? input.deferredSliceIds.filter((id): id is string => typeof id === "string")
+    : [];
   const commentDecisions = Object.fromEntries(
     Object.entries(input.commentDecisions ?? {}).filter(
       (entry): entry is [string, CommentDecision] =>
@@ -162,6 +171,7 @@ function sanitizeState(input: Partial<ReviewProgressState>): ReviewProgressState
 
   return {
     reviewedSliceIds,
+    deferredSliceIds,
     commentDecisions,
     commentDrafts,
   };
@@ -174,6 +184,7 @@ function normalizeState(
 ): ReviewProgressState {
   return {
     reviewedSliceIds: state.reviewedSliceIds.filter((id) => sliceIds.has(id)),
+    deferredSliceIds: state.deferredSliceIds.filter((id) => sliceIds.has(id)),
     commentDecisions: Object.fromEntries(
       Object.entries(state.commentDecisions).filter(([id]) => commentIds.has(id)),
     ),
@@ -252,17 +263,21 @@ function countComments(comments: ReviewProgressComment[]) {
   const dismissedComments = comments.filter(
     (comment) => comment.decision === "dismissed",
   ).length;
+  const deferredComments = comments.filter(
+    (comment) => comment.decision === "deferred",
+  ).length;
   const convertedComments = comments.filter(
     (comment) => comment.decision === "converted",
   ).length;
   const openComments = comments.filter((comment) => comment.decision === "open").length;
-  const actionedComments = resolvedComments + dismissedComments + convertedComments;
+  const actionedComments = resolvedComments + dismissedComments + deferredComments + convertedComments;
 
   return {
     totalComments: comments.length,
     openComments,
     resolvedComments,
     dismissedComments,
+    deferredComments,
     convertedComments,
     actionedComments,
     remainingComments: openComments,
@@ -275,6 +290,7 @@ export function createReviewProgressSnapshot(
 ): ReviewProgressSnapshot {
   const rawSlices = getSlices(input);
   const reviewedSliceIdSet = new Set(state.reviewedSliceIds);
+  const deferredSliceIdSet = new Set(state.deferredSliceIds);
   const slices = rawSlices.map((slice) => {
     const comments = slice.inlineComments.map((comment, index) => {
       const id = createCommentId(slice, comment, index);
@@ -290,6 +306,7 @@ export function createReviewProgressSnapshot(
 
     return {
       ...slice,
+      deferred: slice.deferred || deferredSliceIdSet.has(slice.id),
       reviewed: reviewedSliceIdSet.has(slice.id),
       comments,
       counts: countComments(comments),
@@ -385,6 +402,23 @@ export function useReviewProgress(
       return {
         ...current,
         reviewedSliceIds: Array.from(reviewedSliceIds),
+      };
+    });
+  }, []);
+
+  const setSliceDeferred = useCallback((sliceId: string, deferred: boolean) => {
+    setState((current) => {
+      const deferredSliceIds = new Set(current.deferredSliceIds);
+
+      if (deferred) {
+        deferredSliceIds.add(sliceId);
+      } else {
+        deferredSliceIds.delete(sliceId);
+      }
+
+      return {
+        ...current,
+        deferredSliceIds: Array.from(deferredSliceIds),
       };
     });
   }, []);
@@ -487,6 +521,7 @@ export function useReviewProgress(
     isSliceReviewed,
     getCommentDecision,
     setSliceReviewed,
+    setSliceDeferred,
     toggleSliceReviewed,
     markAllSlicesReviewed,
     resetReviewedSlices,

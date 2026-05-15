@@ -45,7 +45,7 @@ export type Slice = {
 };
 
 export type ReviewPlan = {
-  pr: { repo: string; number: number; title: string };
+  pr: { repo: string; number: number; title: string; url?: string };
   completion: {
     status: Status;
     reviewedFiles: number;

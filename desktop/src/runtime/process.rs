@@ -1,4 +1,7 @@
 use super::{
+    provider_cache::{
+        self, ProviderCacheKey, ProviderCacheMode, ProviderCacheStatus, stable_identity_hash,
+    },
     types::{
         AppSettingsPayload, CommandOutput, ReviewSessionStore, StoredAppSettingsPayload,
         API_COMMAND_TIMEOUT, LIST_COMMAND_TIMEOUT,
@@ -21,6 +24,28 @@ use tauri_plugin_http::reqwest::blocking::Client;
 
 static CONFIG_OVERRIDES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 
+pub(crate) struct ProviderApiResponse {
+    pub(crate) value: Value,
+    pub(crate) cache_status: ProviderCacheStatus,
+    pub(crate) cached_at: Option<u64>,
+}
+
+impl ProviderApiResponse {
+    fn from_cached(response: provider_cache::CachedProviderResponse) -> Self {
+        Self {
+            value: response.response,
+            cache_status: response.status,
+            cached_at: Some(response.cached_at),
+        }
+    }
+}
+
+pub(crate) struct ProviderPaginatedResponse {
+    pub(crate) values: Vec<Value>,
+    pub(crate) cache_status: ProviderCacheStatus,
+    pub(crate) cached_at: Option<u64>,
+}
+
 #[tauri::command]
 pub(crate) fn configure_app_settings(settings: AppSettingsPayload) -> Result<(), String> {
     let overrides = settings
@@ -30,7 +55,15 @@ pub(crate) fn configure_app_settings(settings: AppSettingsPayload) -> Result<(),
         .filter(|(key, value)| !key.is_empty() && !value.is_empty())
         .collect::<HashMap<_, _>>();
     let config = CONFIG_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    *config.lock().map_err(|error| error.to_string())? = overrides;
+    let mut config = config.lock().map_err(|error| error.to_string())?;
+    let auth_changed = provider_auth_settings_changed(&config, &overrides);
+    *config = overrides;
+    drop(config);
+
+    if auth_changed {
+        let _ = provider_cache::invalidate_provider("github");
+        let _ = provider_cache::invalidate_provider("bitbucket");
+    }
 
     Ok(())
 }
@@ -96,6 +129,23 @@ fn app_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
+fn provider_auth_settings_changed(
+    previous: &HashMap<String, String>,
+    next: &HashMap<String, String>,
+) -> bool {
+    [
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "BITBUCKET_API_TOKEN",
+        "BITBUCKET_ACCESS_TOKEN",
+        "BITBUCKET_USERNAME",
+        "BITBUCKET_APP_PASSWORD",
+        "BITBUCKET_EMAIL",
+    ]
+    .into_iter()
+    .any(|key| previous.get(key) != next.get(key))
+}
+
 pub(crate) fn emit_session_event(
     app: &AppHandle,
     session_id: &str,
@@ -130,11 +180,34 @@ pub(crate) fn exec_json_timeout(
 }
 
 pub(crate) fn github_api(path: &str) -> Result<Value, String> {
+    github_api_get_inner(path, 5 * 60, ProviderCacheMode::Refresh, false).map(|response| response.value)
+}
+
+pub(crate) fn github_api_get(
+    path: &str,
+    ttl_seconds: u64,
+    mode: ProviderCacheMode,
+) -> Result<ProviderApiResponse, String> {
+    github_api_get_inner(path, ttl_seconds, mode, true)
+}
+
+fn github_api_get_inner(
+    path: &str,
+    ttl_seconds: u64,
+    mode: ProviderCacheMode,
+    allow_stale_fallback: bool,
+) -> Result<ProviderApiResponse, String> {
     let url = if path.starts_with("http") {
         path.to_string()
     } else {
         format!("https://api.github.com{path}")
     };
+    let cache_key = ProviderCacheKey::get("github", &url, &github_auth_identity_hash());
+    if mode == ProviderCacheMode::CacheFirst {
+        return provider_cache::read(&cache_key, ttl_seconds)
+            .map(ProviderApiResponse::from_cached)
+            .ok_or_else(|| format!("No cached GitHub response for {path}"));
+    }
 
     let mut request = http_client()
         .get(&url)
@@ -144,7 +217,20 @@ pub(crate) fn github_api(path: &str) -> Result<Value, String> {
         request = request.bearer_auth(token);
     }
 
-    send_json(request, &url)
+    match send_json(request, &url) {
+        Ok(value) => {
+            let _ = provider_cache::write(&cache_key, ttl_seconds, &value);
+            Ok(ProviderApiResponse {
+                value,
+                cache_status: ProviderCacheStatus::Fresh,
+                cached_at: None,
+            })
+        }
+        Err(error) if allow_stale_fallback => provider_cache::read(&cache_key, ttl_seconds)
+            .map(ProviderApiResponse::from_cached)
+            .ok_or(error),
+        Err(error) => Err(error),
+    }
 }
 
 pub(crate) fn github_post_json(path: &str, body: &Value) -> Result<Value, String> {
@@ -173,6 +259,11 @@ fn github_auth_token() -> Option<String> {
         .or_else(gh_auth_token)
 }
 
+fn github_auth_identity_hash() -> String {
+    let token = github_auth_token().unwrap_or_else(|| "anonymous".into());
+    stable_identity_hash(&format!("github:{token}"))
+}
+
 fn gh_auth_token() -> Option<String> {
     static TOKEN: OnceLock<Option<String>> = OnceLock::new();
 
@@ -187,18 +278,59 @@ fn gh_auth_token() -> Option<String> {
 }
 
 pub(crate) fn bitbucket_api(path: &str) -> Result<Value, String> {
+    bitbucket_api_get_inner(path, 5 * 60, ProviderCacheMode::Refresh, false).map(|response| response.value)
+}
+
+pub(crate) fn bitbucket_api_get(
+    path: &str,
+    ttl_seconds: u64,
+    mode: ProviderCacheMode,
+) -> Result<ProviderApiResponse, String> {
+    bitbucket_api_get_inner(path, ttl_seconds, mode, true)
+}
+
+fn bitbucket_api_get_inner(
+    path: &str,
+    ttl_seconds: u64,
+    mode: ProviderCacheMode,
+    allow_stale_fallback: bool,
+) -> Result<ProviderApiResponse, String> {
     let url = if path.starts_with("http") {
         path.to_string()
     } else {
         format!("https://api.bitbucket.org/2.0{path}")
     };
     let BitbucketApiAuth::Basic { username, password } = bitbucket_api_auth()?;
+    let cache_key = ProviderCacheKey::get(
+        "bitbucket",
+        &url,
+        &stable_identity_hash(&format!("bitbucket:{username}:{password}")),
+    );
+    if mode == ProviderCacheMode::CacheFirst {
+        return provider_cache::read(&cache_key, ttl_seconds)
+            .map(ProviderApiResponse::from_cached)
+            .ok_or_else(|| format!("No cached Bitbucket response for {path}"));
+    }
+
     let request = http_client()
         .get(&url)
         .header("Accept", "application/json")
         .basic_auth(username, Some(password));
 
-    send_json(request, &url)
+    match send_json(request, &url) {
+        Ok(value) => {
+            let _ = provider_cache::write(&cache_key, ttl_seconds, &value);
+            Ok(ProviderApiResponse {
+                value,
+                cache_status: ProviderCacheStatus::Fresh,
+                cached_at: None,
+            })
+        }
+        Err(error) if allow_stale_fallback => provider_cache::read(&cache_key, ttl_seconds)
+            .map(ProviderApiResponse::from_cached)
+            .ok_or(error),
+        Err(error) => Err(error),
+    }
 }
 
 pub(crate) fn bitbucket_post_json(path: &str, body: Option<&Value>) -> Result<Value, String> {
@@ -260,11 +392,34 @@ fn send_json(
 }
 
 pub(crate) fn bitbucket_paginated(path: &str, limit: usize) -> Result<Vec<Value>, String> {
+    bitbucket_paginated_with_cache(path, limit, 5 * 60, ProviderCacheMode::Refresh)
+        .map(|response| response.values)
+}
+
+pub(crate) fn bitbucket_paginated_with_cache(
+    path: &str,
+    limit: usize,
+    ttl_seconds: u64,
+    mode: ProviderCacheMode,
+) -> Result<ProviderPaginatedResponse, String> {
     let mut next = path.to_string();
     let mut values = Vec::new();
+    let mut cache_status = ProviderCacheStatus::Fresh;
+    let mut cached_at = None;
 
     while !next.is_empty() && values.len() < limit {
-        let page = bitbucket_api(&next)?;
+        let page = match bitbucket_api_get(&next, ttl_seconds, mode) {
+            Ok(page) => page,
+            Err(error) if mode == ProviderCacheMode::CacheFirst && !values.is_empty() => {
+                return Err(format!(
+                    "Incomplete cached Bitbucket response for {path}: missing page {next}. {error}"
+                ));
+            }
+            Err(error) => return Err(error),
+        };
+        cache_status = cache_status.combine(page.cache_status);
+        cached_at = cached_at.or(page.cached_at);
+        let page = page.value;
         if let Some(items) = page.get("values").and_then(Value::as_array) {
             for item in items {
                 values.push(item.clone());
@@ -281,7 +436,11 @@ pub(crate) fn bitbucket_paginated(path: &str, limit: usize) -> Result<Vec<Value>
             .to_string();
     }
 
-    Ok(values)
+    Ok(ProviderPaginatedResponse {
+        values,
+        cache_status,
+        cached_at,
+    })
 }
 
 pub(crate) fn bitbucket_clone_url(repo: &Value) -> Option<String> {

@@ -1,15 +1,5 @@
 import * as React from "react";
-import {
-  ArrowLeft,
-  Bot,
-  ChevronDown,
-  Cloud,
-  GitPullRequest,
-  RotateCcw,
-  Save,
-  Settings,
-  Terminal,
-} from "lucide-react";
+import { ArrowLeft, Bot, ChevronDown, Cloud, GitPullRequest, RotateCcw, Save, Settings, Terminal } from "lucide-react";
 
 import { AppShell } from "@/app/AppShell";
 import { appName } from "@/app/brand";
@@ -18,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { commentTonePresets } from "@/lib/comment-tone";
 import {
   defaultAppSettings,
   envSettingGroups,
@@ -52,6 +43,11 @@ const reviewSkillOptions = [
   { value: "custom", label: "Custom path" },
 ] as const satisfies ReadonlyArray<{ value: ReviewSkillMode; label: string }>;
 
+const commentToneOptions = commentTonePresets.map((preset) => ({
+  value: preset.id,
+  label: preset.label,
+}));
+
 const providerOptions = [
   {
     id: "github",
@@ -73,7 +69,7 @@ const providerOptions = [
 }>;
 
 export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: SettingsScreenProps) {
-  const [draft, setDraft] = React.useState(settings);
+  const [draft, setDraft] = React.useState(() => settings);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -230,6 +226,19 @@ export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: S
           />
           <SettingsRow
             icon={Bot}
+            title="Comment tone"
+            description="Default style for queued PR comment drafts. You can still edit each draft before submitting."
+            control={
+              <ToggleGroup
+                value={draft.commentTonePreset}
+                options={commentToneOptions}
+                onChange={(value) => setDraft((current) => ({ ...current, commentTonePreset: value }))}
+                data-testid="comment-tone-preset"
+              />
+            }
+          />
+          <SettingsRow
+            icon={Bot}
             title="Review skill"
             description="Use the shipped review skill or point Anvil at your own."
             control={
@@ -273,7 +282,9 @@ export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: S
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Advanced</div>
               <h3 className="truncate text-sm font-semibold">Prompt and environment overrides</h3>
             </div>
-            <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+            <ChevronDown
+              className={cn("size-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180")}
+            />
           </button>
 
           {advancedOpen ? (
@@ -281,7 +292,9 @@ export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: S
               <SettingField label="Prompt template">
                 <Textarea
                   value={draft.defaultPromptTemplate}
-                  onChange={(event) => setDraft((current) => ({ ...current, defaultPromptTemplate: event.target.value }))}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, defaultPromptTemplate: event.target.value }))
+                  }
                   spellCheck={false}
                   className="min-h-40 font-mono text-xs leading-5"
                   data-testid="default-prompt-template"
@@ -292,13 +305,23 @@ export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: S
                 <div key={group.id} className="grid gap-3 rounded-md border bg-background p-3">
                   <div>
                     <h4 className="text-sm font-semibold">{group.title}</h4>
-                    <p className="mt-1 text-xs text-muted-foreground">Overrides the matching environment variables for this app session.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Overrides the matching environment variables for this app session.
+                    </p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     {group.variables.map((variable) => (
-                      <SettingField key={variable.key} label={variable.label} htmlFor={`env-${variable.key}`} hint={variable.key}>
+                      <SettingField
+                        key={variable.key}
+                        label={variable.label}
+                        htmlFor={`env-${variable.key}`}
+                        hint={variable.key}
+                      >
                         {variable.secret ? (
-                          <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground" data-testid={`env-${variable.key}`}>
+                          <div
+                            className="rounded-md border bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground"
+                            data-testid={`env-${variable.key}`}
+                          >
                             {variable.help ?? "Set this secret outside the app."}
                           </div>
                         ) : (
@@ -364,7 +387,7 @@ function SettingsRow({
   control: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] md:items-center">
+    <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] md:items-center">
       <div className="flex min-w-0 gap-3">
         <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
@@ -411,14 +434,19 @@ function ToggleGroup<TValue extends string>({
   "data-testid"?: string;
 }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-1 rounded-md border bg-background p-0.5" data-testid={dataTestId}>
+    <div
+      className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-1 rounded-md border bg-background p-0.5"
+      data-testid={dataTestId}
+    >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           className={cn(
             "h-8 rounded px-2 text-xs font-medium transition-colors",
-            value === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            value === option.value
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
           onClick={() => onChange(option.value)}
         >

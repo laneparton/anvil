@@ -1,5 +1,6 @@
 use super::{
     process::{bitbucket_post_json, emit_session_event, github_post_json, terminate_child},
+    provider_cache,
     review::run_review_session,
     types::{
         QueuedReviewComment, QueuedReviewCommentLine, ReviewSessionRecord, ReviewSessionStatus,
@@ -185,13 +186,20 @@ fn submit_provider_review(request: &SubmitReviewRequest) -> Result<Value, String
     validate_submit_action(request)?;
     validate_submit_comments(&request.comments)?;
 
-    match request.source.as_str() {
+    let result = match request.source.as_str() {
         "github" => submit_github_review(request),
         "bitbucket" => submit_bitbucket_review(request),
         other => Err(format!(
             "Submitting reviews for provider '{other}' is not supported."
         )),
+    };
+
+    if result.is_ok() {
+        let _ =
+            provider_cache::invalidate_pull_request(&request.source, &request.repo, &request.pull_request);
     }
+
+    result
 }
 
 fn submit_github_review(request: &SubmitReviewRequest) -> Result<Value, String> {

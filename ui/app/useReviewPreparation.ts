@@ -15,8 +15,10 @@ import {
   createReviewSessionEvent,
   createReviewSessionId,
   findLatestReviewWorktree,
+  findInitialReviewSliceId,
   getPlannedSlices,
   getReadySlice,
+  hasOpenReviewWork,
   isReviewSessionReadyData,
   mergeStreamingSlice,
   normalizeReviewPlan,
@@ -108,6 +110,8 @@ export function useReviewPreparation({
     let cancelled = false;
     let completed = false;
     let openedReview = false;
+    let hasStreamingPlan = false;
+    const streamedSliceIds = new Set<string>();
     let subscription: { unsubscribe: () => void } | undefined;
     const sessionId = createReviewSessionId();
     if (!prepareRequest) {
@@ -131,9 +135,12 @@ export function useReviewPreparation({
       if (cancelled) return;
       completed = true;
       setPendingSliceIds(new Set());
-      setReviewPlan(normalizeReviewPlan(data.plan));
-      openReview(data.plan.slices[0]?.id, !openedReview);
-      openedReview = true;
+      const normalizedPlan = normalizeReviewPlan(data.plan);
+      setReviewPlan(normalizedPlan);
+      if (!openedReview) {
+        openedReview = true;
+        openReview(findInitialReviewSliceId(normalizedPlan), true);
+      }
       setActiveSessionId(sessionId);
       setPrepareState((current) => ({
         ...current,
@@ -159,33 +166,37 @@ export function useReviewPreparation({
 
         const readySlice = getReadySlice(event.data);
         if (event.type === "slice.ready" && readySlice) {
+          const normalizedReadySlice = normalizeSlice(readySlice);
+          streamedSliceIds.add(normalizedReadySlice.id);
           setPendingSliceIds((current) => {
             const next = new Set(current);
-            next.delete(readySlice.id);
+            next.delete(normalizedReadySlice.id);
             return next;
           });
           setReviewPlan((current) =>
             mergeStreamingSlice(
               current,
-              normalizeSlice(readySlice),
+              normalizedReadySlice,
               prepareRequest,
-              !openedReview,
+              !hasStreamingPlan,
             ),
           );
+          hasStreamingPlan = true;
 
-          if (!openedReview) {
+          if (!openedReview && hasOpenReviewWork(normalizedReadySlice)) {
             openedReview = true;
-            openReview(readySlice.id, true);
+            openReview(normalizedReadySlice.id, true);
           }
         }
 
         const plannedSlices = getPlannedSlices(event.data);
-        if (event.type === "planner.ready" && plannedSlices.length > 0 && !openedReview) {
+        if (event.type === "planner.ready" && plannedSlices.length > 0) {
           const orderedPlannedSlices = orderPlannedSlices(plannedSlices);
-          openedReview = true;
-          setReviewPlan((current) => createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest));
-          setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id)));
-          openReview(orderedPlannedSlices[0].id, true);
+          setReviewPlan((current) =>
+            createPlannedReviewPlan(current, orderedPlannedSlices, prepareRequest, streamedSliceIds),
+          );
+          setPendingSliceIds(new Set(orderedPlannedSlices.map((slice) => slice.id).filter((id) => !streamedSliceIds.has(id))));
+          hasStreamingPlan = true;
         }
 
         const readyData =

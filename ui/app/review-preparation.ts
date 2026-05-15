@@ -20,6 +20,7 @@ export type PrepareState = {
 
 export type PendingPrepareRequest = Omit<StartReviewSessionRequest, "sessionId"> & {
   title?: string;
+  url?: string;
 };
 
 export type PlannedSlice = Pick<Slice, "id" | "title" | "risk" | "why" | "files">;
@@ -40,11 +41,7 @@ export function createReviewSessionId(): string {
   return `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function createReviewSessionEvent(
-  type: string,
-  message: string,
-  data?: unknown,
-): ReviewSessionEvent {
+export function createReviewSessionEvent(type: string, message: string, data?: unknown): ReviewSessionEvent {
   return {
     type,
     message,
@@ -58,6 +55,22 @@ export function normalizeReviewPlan(input: ReviewPlan): ReviewPlan {
     ...input,
     slices: orderReviewSlices(input.slices.map(normalizeSlice)),
   };
+}
+
+export function findInitialReviewSliceId(plan: ReviewPlan): string | undefined {
+  const decisionSlice = plan.slices.find(hasOpenReviewWork);
+  if (decisionSlice) {
+    return decisionSlice.id;
+  }
+
+  return plan.slices.find((slice) => !slice.deferred)?.id ?? plan.slices[0]?.id;
+}
+
+export function hasOpenReviewWork(slice: Slice): boolean {
+  return (
+    !slice.deferred &&
+    (slice.inlineComments.length > 0 || filterActionableQuestions(slice.remainingQuestions).length > 0)
+  );
 }
 
 export function normalizeSlice(slice: Slice): Slice {
@@ -117,34 +130,79 @@ export function createPlannedReviewPlan(
   current: ReviewPlan,
   plannedSlices: PlannedSlice[],
   request: PendingPrepareRequest,
+  streamedSliceIds: ReadonlySet<string>,
 ): ReviewPlan {
+  const slices = plannedSlices.map((plannedSlice) => {
+    const existingSlice = streamedSliceIds.has(plannedSlice.id)
+      ? current.slices.find((slice) => slice.id === plannedSlice.id)
+      : undefined;
+    if (!existingSlice) {
+      return createPendingPlannedSlice(plannedSlice);
+    }
+
+    return normalizeSlice({
+      ...existingSlice,
+      id: plannedSlice.id,
+      title: plannedSlice.title,
+      risk: plannedSlice.risk,
+      why: plannedSlice.why,
+      files: plannedSlice.files,
+    });
+  });
+  const completion = createCompletionForSlices(slices);
+
   return {
     ...current,
     pr: {
       repo: request.repo ?? current.pr.repo,
       number: Number(request.pullRequest) || current.pr.number,
       title: request.title || current.pr.title,
+      url: request.url ?? current.pr.url,
     },
-    completion: {
-      status: "needs-human",
-      reviewedFiles: 0,
-      totalFiles: current.completion.totalFiles,
-      reviewedHunks: 0,
-      totalHunks: current.completion.totalHunks,
-      blockingComments: 0,
-      openQuestions: 0,
-    },
-    slices: plannedSlices.map((slice) => ({
-      ...slice,
-      status: "needs-human",
-      deferred: false,
-      deferReason: "",
-      filesReviewed: [],
-      hunks: [],
-      inlineComments: [],
-      remainingQuestions: [],
-      evidence: [],
-    })),
+    completion,
+    slices: orderReviewSlices(slices),
+  };
+}
+
+function createPendingPlannedSlice(slice: PlannedSlice): Slice {
+  return {
+    ...slice,
+    status: "needs-human",
+    deferred: false,
+    deferReason: "",
+    filesReviewed: [],
+    hunks: [],
+    inlineComments: [],
+    remainingQuestions: [],
+    evidence: [],
+  };
+}
+
+function createCompletionForSlices(slices: Slice[]): ReviewPlan["completion"] {
+  const totalFiles = new Set(slices.flatMap((slice) => slice.files)).size;
+  const reviewedFiles = new Set(slices.flatMap((slice) => slice.filesReviewed)).size;
+  const reviewedHunks = slices.reduce((sum, slice) => sum + slice.hunks.length, 0);
+  const blockingComments = slices.reduce(
+    (sum, slice) => sum + slice.inlineComments.filter((comment) => comment.severity === "blocking").length,
+    0,
+  );
+  const openQuestions = slices.reduce(
+    (sum, slice) => sum + filterActionableQuestions(slice.remainingQuestions).length,
+    0,
+  );
+  const hasPendingHumanWork = slices.some((slice) => slice.status === "needs-human");
+
+  return {
+    status:
+      blockingComments > 0 ? "blocked" :
+      openQuestions > 0 || hasPendingHumanWork ? "needs-human" :
+      "agent-reviewed",
+    reviewedFiles,
+    totalFiles,
+    reviewedHunks,
+    totalHunks: reviewedHunks,
+    blockingComments,
+    openQuestions,
   };
 }
 
@@ -155,16 +213,12 @@ export function mergeStreamingSlice(
   replaceExisting: boolean,
 ): ReviewPlan {
   const existingSlices = replaceExisting ? [] : current.slices;
-  const slices = [
-    ...existingSlices.filter((candidate) => candidate.id !== slice.id),
-    slice,
-  ];
+  const slices = [...existingSlices.filter((candidate) => candidate.id !== slice.id), slice];
   const totalFiles = new Set(slices.flatMap((candidate) => candidate.files)).size;
   const reviewedFiles = new Set(slices.flatMap((candidate) => candidate.filesReviewed)).size;
   const reviewedHunks = slices.reduce((sum, candidate) => sum + candidate.hunks.length, 0);
   const blockingComments = slices.reduce(
-    (sum, candidate) =>
-      sum + candidate.inlineComments.filter((comment) => comment.severity === "blocking").length,
+    (sum, candidate) => sum + candidate.inlineComments.filter((comment) => comment.severity === "blocking").length,
     0,
   );
   const openQuestions = slices.reduce(
@@ -178,6 +232,7 @@ export function mergeStreamingSlice(
       repo: request.repo ?? current.pr.repo,
       number: Number(request.pullRequest) || current.pr.number,
       title: request.title || current.pr.title,
+      url: request.url ?? current.pr.url,
     },
     completion: {
       status: blockingComments > 0 ? "blocked" : openQuestions > 0 ? "needs-human" : "agent-reviewed",

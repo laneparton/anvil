@@ -26,15 +26,38 @@ export type ReviewPullRequest = {
   needsReview?: boolean;
   isCreatedByMe?: boolean;
   isAssignedToMe?: boolean;
+  cacheStatus?: "fresh" | "cached" | "stale";
+  cachedAt?: number;
+  description?: string;
+  labels?: string[];
+  commitsCount?: number;
+  commentsCount?: number;
+  tasksCount?: number;
+  additionsCount?: number;
+  deletionsCount?: number;
+  checks?: ReviewInboxCheckSummary;
+  approvals?: ReviewInboxApprovalSummary;
+  requestedReviewers?: string[];
+  changedFileGroups?: ReviewInboxChangedFileGroup[];
+  activity?: ReviewInboxActivity[];
 };
 
 export type ReviewInboxFilter = "needsReview" | "createdByMe" | "assignedToMe" | "allOpen";
+export type ReviewInboxCacheMode = "cacheFirst" | "refresh";
 
 export type ReviewInboxRequest = {
   filter?: ReviewInboxFilter;
   providers?: string[];
   repos?: string[];
   limit?: number;
+  cacheMode?: ReviewInboxCacheMode;
+};
+
+export type ReviewInboxHydrateRequest = {
+  source: string;
+  repo: string;
+  pullRequest: string | number;
+  cacheMode?: ReviewInboxCacheMode;
 };
 
 export type ReviewInboxRow = {
@@ -55,6 +78,46 @@ export type ReviewInboxRow = {
   needsReview?: boolean;
   isCreatedByMe?: boolean;
   isAssignedToMe?: boolean;
+  cacheStatus?: "fresh" | "cached" | "stale";
+  cachedAt?: number;
+  description?: string;
+  labels?: string[];
+  commitsCount?: number;
+  commentsCount?: number;
+  tasksCount?: number;
+  additionsCount?: number;
+  deletionsCount?: number;
+  checks?: ReviewInboxCheckSummary;
+  approvals?: ReviewInboxApprovalSummary;
+  requestedReviewers?: string[];
+  changedFileGroups?: ReviewInboxChangedFileGroup[];
+  activity?: ReviewInboxActivity[];
+};
+
+export type ReviewInboxCheckSummary = {
+  passing: number;
+  failing: number;
+  pending: number;
+};
+
+export type ReviewInboxApprovalSummary = {
+  received: number;
+  required: number;
+};
+
+export type ReviewInboxChangedFileGroup = {
+  label: string;
+  files: Array<{
+    path: string;
+    additions: number;
+    deletions: number;
+  }>;
+};
+
+export type ReviewInboxActivity = {
+  actor: string;
+  detail: string;
+  age: string;
 };
 
 export type ReviewInboxResult = {
@@ -63,6 +126,10 @@ export type ReviewInboxResult = {
     provider?: string;
     message?: string;
   }>;
+};
+
+export type ReviewInboxHydrateResult = {
+  row?: ReviewInboxRow;
 };
 
 export type StartReviewSessionRequest = {
@@ -197,9 +264,22 @@ export async function listReviewInbox(request: ReviewInboxRequest): Promise<Revi
   };
 }
 
-export async function startReviewSession(
-  request: StartReviewSessionRequest,
-): Promise<StartReviewSessionResult> {
+export async function hydrateReviewInboxRow(
+  request: ReviewInboxHydrateRequest,
+): Promise<ReviewInboxHydrateResult> {
+  const payload: ReviewInboxHydrateRequest = {
+    ...request,
+    pullRequest: String(request.pullRequest),
+  };
+  const data = await tauriInvoke<Partial<ReviewInboxHydrateResult> | undefined>("hydrate_review_inbox_row", {
+    request: payload,
+  });
+  return {
+    row: typeof data?.row === "object" && data.row !== null ? data.row : undefined,
+  };
+}
+
+export async function startReviewSession(request: StartReviewSessionRequest): Promise<StartReviewSessionResult> {
   try {
     return await tauriInvoke<StartReviewSessionResult>("start_review_session", { request });
   } catch (error) {
@@ -241,18 +321,18 @@ export async function cancelReviewSession(sessionId: string): Promise<void> {
   await tauriInvoke("cancel_review_session", { sessionId });
 }
 
-export async function submitReviewSession(
-  request: SubmitReviewSessionRequest,
-): Promise<SubmitReviewSessionReceipt> {
+export async function submitReviewSession(request: SubmitReviewSessionRequest): Promise<SubmitReviewSessionReceipt> {
   return tauriInvoke<SubmitReviewSessionReceipt>("submit_review_session", {
     request,
   });
 }
 
-export async function openReviewAgent(
-  request: OpenReviewAgentRequest,
-): Promise<OpenReviewAgentResult> {
+export async function openReviewAgent(request: OpenReviewAgentRequest): Promise<OpenReviewAgentResult> {
   return tauriInvoke<OpenReviewAgentResult>("open_review_agent", { request });
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  return tauriInvoke("open_external_url", { url });
 }
 
 export async function configureAppSettings(settings: AppSettingsBridge): Promise<void> {

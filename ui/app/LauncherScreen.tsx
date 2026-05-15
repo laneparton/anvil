@@ -97,9 +97,12 @@ export type LauncherScreenProps = {
   onRepoSearchChange?: (query: string) => void;
 };
 
+const EMPTY_PULL_REQUESTS: ReviewInboxPullRequest[] = [];
+const EMPTY_REPOS: ReviewRepo[] = [];
+
 export function LauncherScreen({
-  pullRequests = [],
-  repos = [],
+  pullRequests = EMPTY_PULL_REQUESTS,
+  repos = EMPTY_REPOS,
   selectedRowId,
   activeFilter = "needsReview",
   sourceFilter,
@@ -198,6 +201,7 @@ export function LauncherScreen({
       age: "now",
       files: null,
       status: "open",
+      url: parsed.url,
       needsReview: true,
     });
   };
@@ -279,12 +283,16 @@ export function LauncherScreen({
                     data-testid={`inbox-filter-${filter.id}`}
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
-                      selected ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
                   >
                     <Icon className="size-3.5 shrink-0" />
                     <span className="truncate">{filter.label}</span>
-                    <span className={cn("font-mono", selected ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                    <span
+                      className={cn("font-mono", selected ? "text-primary-foreground/80" : "text-muted-foreground")}
+                    >
                       {filterCounts[filter.id]}
                     </span>
                   </button>
@@ -409,10 +417,17 @@ export function LauncherScreen({
         </div>
 
         {manualOpen ? (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-labelledby="manual-pr-title">
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/30 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manual-pr-title"
+          >
             <div className="grid w-full max-w-lg gap-4 rounded-lg border bg-card p-4 shadow-lg">
               <div className="flex items-center justify-between gap-3">
-                <h3 id="manual-pr-title" className="text-sm font-semibold">Open PR manually</h3>
+                <h3 id="manual-pr-title" className="text-sm font-semibold">
+                  Open PR manually
+                </h3>
                 <button
                   type="button"
                   className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -423,7 +438,9 @@ export function LauncherScreen({
                 </button>
               </div>
               <label className="grid gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pull request URL</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pull request URL
+                </span>
                 <input
                   value={manualUrl}
                   onChange={(event) => {
@@ -435,7 +452,6 @@ export function LauncherScreen({
                       handleManualPrepare();
                     }
                   }}
-                  autoFocus
                   placeholder="https://bitbucket.org/workspace/repo/pull-requests/45"
                   className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary/50"
                   data-testid="manual-pr-url"
@@ -508,13 +524,15 @@ function normalizePullRequest(
     number,
     author: pullRequest.author,
     age: pullRequest.age,
-    filesLabel: pullRequest.files === null || pullRequest.files === undefined ? undefined : `${pullRequest.files} files`,
+    filesLabel:
+      pullRequest.files === null || pullRequest.files === undefined ? undefined : `${pullRequest.files} files`,
     statusLabel: pullRequest.status || "open",
     raw: pullRequest,
     reviewStatus: pullRequest.reviewStatus,
     isCreatedByMe: Boolean(pullRequest.isCreatedByMe),
     isAssignedToMe: Boolean(pullRequest.isAssignedToMe),
-    needsReview: pullRequest.needsReview ?? (pullRequest.reviewStatus ? pullRequest.reviewStatus === "needsReview" : true),
+    needsReview:
+      pullRequest.needsReview ?? (pullRequest.reviewStatus ? pullRequest.reviewStatus === "needsReview" : true),
   };
 }
 
@@ -529,7 +547,9 @@ function matchesSourceFilter(row: NormalizedPullRequest, sourceFilter: ReviewInb
   return sourceFilter === "all" || row.source === sourceFilter;
 }
 
-export function parseManualPullRequestUrl(value: string): { source: ReviewSourceId; repo: string; number: string } | undefined {
+export function parseManualPullRequestUrl(
+  value: string,
+): { source: ReviewSourceId; repo: string; number: string; url: string } | undefined {
   const url = parseUrl(value.trim());
   if (!url) return undefined;
 
@@ -537,13 +557,13 @@ export function parseManualPullRequestUrl(value: string): { source: ReviewSource
   if (hostname === "github.com") {
     const [, owner, repo, kind, number] = url.pathname.split("/");
     if (owner && repo && kind === "pull" && number && /^\d+$/.test(number)) {
-      return { source: "github", repo: `${owner}/${repo}`, number };
+      return { source: "github", repo: `${owner}/${repo}`, number, url: url.toString() };
     }
   }
   if (hostname === "bitbucket.org") {
     const [, workspace, repo, kind, number] = url.pathname.split("/");
     if (workspace && repo && kind === "pull-requests" && number && /^\d+$/.test(number)) {
-      return { source: "bitbucket", repo: `${workspace}/${repo}`, number };
+      return { source: "bitbucket", repo: `${workspace}/${repo}`, number, url: url.toString() };
     }
   }
 
@@ -583,9 +603,11 @@ function countSources(rows: NormalizedPullRequest[]) {
 }
 
 function normalizeSource(source: ReviewInboxPullRequest["source"] | string | undefined) {
-  const value = String(source ?? "").toLowerCase();
-  if (value.includes("bitbucket")) return "bitbucket";
-  if (value.includes("github")) return "github";
+  const value = String(source ?? "")
+    .trim()
+    .toLowerCase();
+  if (["bitbucket", "bitbucket.org", "bitbucket cloud"].includes(value)) return "bitbucket";
+  if (["github", "github.com", "github enterprise", "github enterprise server"].includes(value)) return "github";
   return "unknown";
 }
 
@@ -613,7 +635,9 @@ function SourceFilterButton({
       onClick={onClick}
       className={cn(
         "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
-        selected ? "border-primary/35 bg-primary/10 text-foreground" : "border-border bg-background text-muted-foreground hover:bg-accent",
+        selected
+          ? "border-primary/35 bg-primary/10 text-foreground"
+          : "border-border bg-background text-muted-foreground hover:bg-accent",
       )}
     >
       {Icon ? <Icon className="size-3.5 shrink-0" /> : null}

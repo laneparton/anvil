@@ -111,13 +111,19 @@ function buildChangeSummary(slice: ReviewProgressSlice, lineChange: RepeatedLine
 }
 
 function buildReviewFocus(slice: ReviewProgressSlice, actionableQuestions: string[]) {
-  const focusItems = [
+  const candidates = [
     usefulBriefSentence(slice.decisionQuestion),
     usefulBriefSentence(slice.primaryRisk),
     firstUsefulCondition(slice.commentConditions),
     firstUsefulCondition(slice.acceptConditions),
     actionableQuestions[0],
-  ].filter(Boolean);
+  ];
+  const focusItems: string[] = [];
+  for (const candidate of candidates) {
+    if (candidate) {
+      focusItems.push(candidate);
+    }
+  }
 
   if (focusItems.length > 0) {
     return focusItems.slice(0, 2).join(" ");
@@ -127,7 +133,13 @@ function buildReviewFocus(slice: ReviewProgressSlice, actionableQuestions: strin
 }
 
 function firstUsefulCondition(conditions: string[] | undefined) {
-  return conditions?.map(usefulBriefSentence).find(Boolean);
+  for (const condition of conditions ?? []) {
+    const sentence = usefulBriefSentence(condition);
+    if (sentence) {
+      return sentence;
+    }
+  }
+  return undefined;
 }
 
 function usefulBriefSentence(value: string | undefined) {
@@ -200,14 +212,21 @@ function getRepeatedLineChange(slice: ReviewProgressSlice): RepeatedLineChange |
   const added = new Set<string>();
 
   for (const hunk of slice.hunks) {
-    const removedLines = hunk.lines
-      .filter((line) => line.kind === "remove")
-      .map((line) => line.text.trim())
-      .filter(Boolean);
-    const addedLines = hunk.lines
-      .filter((line) => line.kind === "add")
-      .map((line) => line.text.trim())
-      .filter(Boolean);
+    const removedLines: string[] = [];
+    const addedLines: string[] = [];
+
+    for (const line of hunk.lines) {
+      const text = line.text.trim();
+      if (!text) {
+        continue;
+      }
+
+      if (line.kind === "remove") {
+        removedLines.push(text);
+      } else if (line.kind === "add") {
+        addedLines.push(text);
+      }
+    }
 
     if (removedLines.length !== 1 || addedLines.length !== 1) {
       return undefined;

@@ -8,6 +8,7 @@ This folder keeps durable project docs only. Prototype snapshots, exploratory no
 - [Review Pipeline Product Contract](./review-pipeline-product-contract.md): review-plan input/output contract.
 - [Review Pipeline Eval Suite](./review-pipeline-evals.md): fixture-based quality checks for generated plans.
 - [Anvil Brand Direction](./anvil-brand-direction.md): product and UI direction.
+- [Experience Layer Workflow](./experience-layer-workflow.md): current user workflow and feature inventory for experience evaluation.
 
 ## Runtime Notes
 

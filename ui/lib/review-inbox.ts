@@ -1,8 +1,4 @@
-import type {
-  ReviewInboxFilter,
-  ReviewInboxPullRequest,
-  ReviewSourceId,
-} from "@/app/LauncherScreen";
+import type { ReviewInboxFilter, ReviewInboxPullRequest, ReviewSourceId } from "@/app/LauncherScreen";
 import type { ReviewInboxRow } from "@/lib/api";
 
 export function reviewInboxRowToPullRequest(row: ReviewInboxRow): ReviewInboxPullRequest {
@@ -37,6 +33,20 @@ export function reviewInboxRowToPullRequest(row: ReviewInboxRow): ReviewInboxPul
     needsReview,
     isCreatedByMe,
     isAssignedToMe,
+    cacheStatus: row.cacheStatus,
+    cachedAt: row.cachedAt,
+    description: row.description,
+    labels: row.labels,
+    commitsCount: row.commitsCount,
+    commentsCount: row.commentsCount,
+    tasksCount: row.tasksCount,
+    additionsCount: row.additionsCount,
+    deletionsCount: row.deletionsCount,
+    checks: row.checks,
+    approvals: row.approvals,
+    requestedReviewers: row.requestedReviewers,
+    changedFileGroups: row.changedFileGroups,
+    activity: row.activity,
   };
 }
 
@@ -50,16 +60,21 @@ export function getReviewPullRequestNumber(row: ReviewInboxPullRequest | undefin
 }
 
 export function normalizeReviewSource(source: unknown): ReviewSourceId | undefined {
-  const value = String(source ?? "").toLowerCase();
-  if (value.includes("bitbucket")) return "bitbucket";
-  if (value.includes("github")) return "github";
+  const value = String(source ?? "")
+    .trim()
+    .toLowerCase();
+  if (["bitbucket", "bitbucket.org", "bitbucket cloud"].includes(value)) return "bitbucket";
+  if (["github", "github.com", "github enterprise", "github enterprise server"].includes(value)) return "github";
   return undefined;
 }
 
-export function formatInboxErrors(errors: Array<{ provider?: string; message?: string }> | undefined): string | undefined {
-  const messages = (errors ?? [])
-    .map((error) => [error.provider, error.message].filter(Boolean).join(": "))
-    .filter(Boolean);
+export function formatInboxErrors(
+  errors: Array<{ provider?: string; message?: string }> | undefined,
+): string | undefined {
+  const messages = (errors ?? []).flatMap((error) => {
+    const message = [error.provider, error.message].filter(Boolean).join(": ");
+    return message ? [message] : [];
+  });
 
   return messages.length > 0 ? messages.join(" ") : undefined;
 }
@@ -92,10 +107,7 @@ export function providerTimeoutMs(provider: string): number {
   return provider === "github" ? 25_000 : 15_000;
 }
 
-export function matchesReviewInboxFilter(
-  row: ReviewInboxPullRequest,
-  filter: ReviewInboxFilter,
-): boolean {
+export function matchesReviewInboxFilter(row: ReviewInboxPullRequest, filter: ReviewInboxFilter): boolean {
   if (filter === "allOpen") return true;
   return row.reviewStatus === filter;
 }

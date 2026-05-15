@@ -17,10 +17,16 @@ export type PreparingScreenProps = {
   onCancel: () => void;
 };
 
+const eventTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 export function PreparingScreen({ state, repo, pullRequest, onCancel }: PreparingScreenProps) {
   const failed = state.status === "error";
   const activeEvent = state.events[state.events.length - 1];
-  const activeMessage = eventMessage(activeEvent) || state.error || "Starting the review session.";
+  const activeMessage = eventMessage(activeEvent) || state.error || "Starting the Anvil review session.";
   const phases = buildPhaseTimeline(state.events, failed);
   const sliceProgress = getSliceProgress(state.events);
   const overallProgress = getOverallProgress(phases);
@@ -36,7 +42,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
           onClick={onCancel}
           disabled={state.canceling}
         >
-          {state.canceling ? "Canceling..." : "Cancel"}
+          {state.canceling ? <>Canceling&hellip;</> : "Cancel"}
         </Button>
       }
     >
@@ -44,7 +50,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
         <Card className="w-full max-w-3xl self-start overflow-hidden">
           <CardHeader className="space-y-1 px-5 py-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">{failed ? "Could not prepare review" : "Preparing review"}</h2>
+              <h2 className="text-lg font-semibold">{failed ? "Could not prepare review" : "Anvil is preparing the review"}</h2>
               <Badge
                 className={cn(
                   failed
@@ -52,7 +58,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
                     : "border-primary/25 bg-primary/10 text-primary",
                 )}
               >
-                {state.sessionId ? "tauri runtime" : "starting"}
+                {state.sessionId ? "Anvil runtime" : "starting"}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">{activeMessage}</p>
@@ -117,10 +123,10 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
               <ScrollArea className="max-h-48 border-t">
                 <ol className="grid gap-0 p-2">
                   {state.events.length > 0 ? (
-                    state.events.map((event, index) => (
+                    state.events.map((event) => (
                       <li
-                        key={`${event.at}:${event.type}:${index}`}
-                        className="grid grid-cols-[5.5rem_8rem_minmax(0,1fr)] gap-3 border-b px-2 py-2 font-mono text-xs last:border-b-0"
+                        key={eventKey(event)}
+                        className="grid grid-cols-[5.5rem_8rem_minmax(0,1fr)] gap-3 border-b p-2 font-mono text-xs last:border-b-0"
                       >
                         <span className="text-muted-foreground">{formatEventTime(event.at)}</span>
                         <span className={cn("truncate", isFailureEvent(event.type) ? "text-destructive" : "text-primary")}>
@@ -130,7 +136,9 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
                       </li>
                     ))
                   ) : (
-                    <li className="px-2 py-6 text-center text-sm text-muted-foreground">Waiting for events...</li>
+                    <li className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      Waiting for events&hellip;
+                    </li>
                   )}
                 </ol>
               </ScrollArea>
@@ -151,7 +159,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
           </CardContent>
           {state.error ? null : (
             <div className="flex items-center justify-between border-t px-5 py-3 text-xs text-muted-foreground">
-              <span>The review opens as soon as the slice plan is ready.</span>
+              <span>Anvil opens the review when the first actionable decision is ready.</span>
               {!failed ? <Loader2 className="size-4 animate-spin" /> : null}
             </div>
           )}
@@ -180,11 +188,11 @@ function eventMessage(event: ReviewSessionEvent | undefined): string {
 }
 
 function formatEventTime(value: string | number) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(value));
+  return eventTimeFormatter.format(new Date(value));
+}
+
+function eventKey(event: ReviewSessionEvent) {
+  return [event.at, event.type, event.message, JSON.stringify(event.data ?? null)].join(":");
 }
 
 type PhaseStatus = "pending" | "active" | "complete" | "failed";
@@ -261,8 +269,11 @@ function buildPhaseTimeline(events: ReviewSessionEvent[], failed: boolean): Phas
 function findActivePhaseIndex(events: ReviewSessionEvent[]) {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const type = events[index].type;
-    const phaseIndex = PHASES.findIndex((phase) => phase.eventPrefixes.some((prefix) => type.startsWith(prefix)));
-    if (phaseIndex >= 0) return phaseIndex;
+    for (let phaseIndex = 0; phaseIndex < PHASES.length; phaseIndex += 1) {
+      if (PHASES[phaseIndex].eventPrefixes.some((prefix) => type.startsWith(prefix))) {
+        return phaseIndex;
+      }
+    }
   }
 
   return 0;
