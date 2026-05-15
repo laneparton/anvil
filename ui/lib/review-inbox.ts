@@ -37,6 +37,20 @@ export function reviewInboxRowToPullRequest(row: ReviewInboxRow): ReviewInboxPul
     needsReview,
     isCreatedByMe,
     isAssignedToMe,
+    cacheStatus: row.cacheStatus,
+    cachedAt: row.cachedAt,
+    description: row.description,
+    labels: row.labels,
+    commitsCount: row.commitsCount,
+    commentsCount: row.commentsCount,
+    tasksCount: row.tasksCount,
+    additionsCount: row.additionsCount,
+    deletionsCount: row.deletionsCount,
+    checks: row.checks,
+    approvals: row.approvals,
+    requestedReviewers: row.requestedReviewers,
+    changedFileGroups: row.changedFileGroups,
+    activity: row.activity,
   };
 }
 

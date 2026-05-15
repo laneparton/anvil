@@ -3,14 +3,14 @@ import * as React from "react";
 import type {
   ReviewInboxFilter,
   ReviewInboxPullRequest,
-  ReviewInboxSourceFilter,
   ReviewSourceId,
 } from "@/app/LauncherScreen";
 import type { LoadingState } from "@/app/review-preparation";
-import { configureAppSettings, listReviewInbox } from "@/lib/api";
+import { configureAppSettings, hydrateReviewInboxRow, listReviewInbox } from "@/lib/api";
 import { formatUnknownError } from "@/lib/errors";
 import {
   formatInboxErrors,
+  getReviewPullRequestNumber,
   mergeReviewInboxRows,
   normalizeReviewSource,
   providerTimeoutMs,
@@ -34,11 +34,10 @@ export function useReviewInbox({
   const [selectedPullRequest, setSelectedPullRequest] = React.useState("");
   const [reviewInboxRows, setReviewInboxRows] = React.useState<ReviewInboxPullRequest[]>([]);
   const [reviewInboxFilter, setReviewInboxFilter] = React.useState<ReviewInboxFilter>("allOpen");
-  const [reviewInboxSourceFilter, setReviewInboxSourceFilter] =
-    React.useState<ReviewInboxSourceFilter>("all");
   const [reviewInboxSearch, setReviewInboxSearch] = React.useState("");
   const [reviewInboxState, setReviewInboxState] = React.useState<LoadingState>("idle");
   const [reviewInboxRefreshId, setReviewInboxRefreshId] = React.useState(0);
+  const [hydratingPullRequestId, setHydratingPullRequestId] = React.useState<string | undefined>();
   const [launcherError, setLauncherError] = React.useState<string | undefined>();
 
   React.useEffect(() => {
@@ -52,11 +51,15 @@ export function useReviewInbox({
     );
     let pendingProviders = providers.length;
     const providerErrors: Array<{ provider?: string; message?: string }> = [];
+    const useCacheFirst = reviewInboxRefreshId === 0;
 
     setReviewInboxState("loading");
     setLauncherError(undefined);
-    setReviewInboxRows([]);
+    if (!useCacheFirst) {
+      setReviewInboxRows([]);
+    }
     setSelectedPullRequest("");
+    setHydratingPullRequestId(undefined);
     resetPreparation();
 
     const finishProvider = () => {
@@ -81,26 +84,59 @@ export function useReviewInbox({
           return;
         }
 
+        const applyRows = (
+          provider: ReviewSourceId,
+          rows: ReviewInboxPullRequest[],
+          replaceProviderRows: boolean,
+        ) => {
+          setReviewInboxRows((current) => {
+            const base = replaceProviderRows
+              ? current.filter((row) => normalizeReviewSource(row.source) !== provider)
+              : current;
+            const next = mergeReviewInboxRows(base, rows);
+            setSelectedPullRequest((selected) =>
+              next.some((row) => row.id === selected) ? selected : next[0]?.id ?? "",
+            );
+            return next;
+          });
+        };
+
         for (const provider of providers) {
-          withTimeout(
-            listReviewInbox({
-              providers: [provider],
-              limit: 100,
-            }),
-            providerTimeoutMs(provider),
-            `${sourceLabel(provider)} PR loading timed out after ${providerTimeoutMs(provider) / 1000}s.`,
-          )
+          const loadCachedRows = useCacheFirst
+            ? withTimeout(
+                listReviewInbox({
+                  providers: [provider],
+                  limit: 100,
+                  cacheMode: "cacheFirst",
+                }),
+                1_500,
+                `${sourceLabel(provider)} cached PR loading timed out.`,
+              )
+                .then((result) => {
+                  if (cancelled) return;
+                  const rows = result.rows.map(reviewInboxRowToPullRequest);
+                  if (rows.length > 0) applyRows(provider, rows, false);
+                })
+                .catch(() => undefined)
+            : Promise.resolve();
+
+          loadCachedRows
+            .then(() =>
+              withTimeout(
+                listReviewInbox({
+                  providers: [provider],
+                  limit: 100,
+                  cacheMode: "refresh",
+                }),
+                providerTimeoutMs(provider),
+                `${sourceLabel(provider)} PR loading timed out after ${providerTimeoutMs(provider) / 1000}s.`,
+              ),
+            )
             .then((result) => {
               if (cancelled) return;
               const rows = result.rows.map(reviewInboxRowToPullRequest);
               providerErrors.push(...result.errors);
-              setReviewInboxRows((current) => {
-                const next = mergeReviewInboxRows(current, rows);
-                setSelectedPullRequest((selected) =>
-                  next.some((row) => row.id === selected) ? selected : next[0]?.id ?? "",
-                );
-                return next;
-              });
+              applyRows(provider, rows, true);
             })
             .catch((error: Error) => {
               if (!cancelled) {
@@ -118,6 +154,9 @@ export function useReviewInbox({
 
   const selectedInboxRow =
     reviewInboxRows.find((row) => row.id === selectedPullRequest) ?? reviewInboxRows[0];
+  const selectedInboxHydrating = Boolean(
+    selectedInboxRow?.id && hydratingPullRequestId === selectedInboxRow.id,
+  );
   const launcherLoading = reviewInboxState === "loading" && reviewInboxRows.length === 0;
   const launcherRefreshing = reviewInboxState === "loading" && reviewInboxRows.length > 0;
 
@@ -125,7 +164,49 @@ export function useReviewInbox({
     (pullRequest: ReviewInboxPullRequest) => {
       setSelectedPullRequest(pullRequest.id);
       setSelectedRepo(pullRequest.repo);
-      setSelectedSource(normalizeReviewSource(pullRequest.source) ?? selectedSource);
+      setHydratingPullRequestId(pullRequest.id);
+      const source = normalizeReviewSource(pullRequest.source) ?? selectedSource;
+      const pullRequestNumber = getReviewPullRequestNumber(pullRequest);
+      setSelectedSource(source);
+
+      if (!pullRequest.repo || !pullRequestNumber) {
+        setHydratingPullRequestId(undefined);
+        return;
+      }
+
+      const applyHydratedRow = (row: ReviewInboxPullRequest) => {
+        setReviewInboxRows((current) => mergeReviewInboxRows(current, [row]));
+      };
+
+      void hydrateReviewInboxRow({
+        source,
+        repo: pullRequest.repo,
+        pullRequest: pullRequestNumber,
+        cacheMode: "cacheFirst",
+      })
+        .then((result) => {
+          if (result.row) {
+            applyHydratedRow(reviewInboxRowToPullRequest(result.row));
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          void hydrateReviewInboxRow({
+            source,
+            repo: pullRequest.repo,
+            pullRequest: pullRequestNumber,
+            cacheMode: "refresh",
+          })
+            .then((result) => {
+              if (result.row) {
+                applyHydratedRow(reviewInboxRowToPullRequest(result.row));
+              }
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              setHydratingPullRequestId((current) => (current === pullRequest.id ? undefined : current));
+            });
+        });
     },
     [selectedSource],
   );
@@ -133,14 +214,6 @@ export function useReviewInbox({
   const changeActiveFilter = React.useCallback((filter: ReviewInboxFilter) => {
     setReviewInboxFilter(filter);
     setSelectedPullRequest("");
-  }, []);
-
-  const changeSourceFilter = React.useCallback((source: ReviewInboxSourceFilter) => {
-    setReviewInboxSourceFilter(source);
-    setSelectedPullRequest("");
-    if (source !== "all") {
-      setSelectedSource(source);
-    }
   }, []);
 
   const refreshInbox = React.useCallback(() => {
@@ -155,8 +228,8 @@ export function useReviewInbox({
     reviewInboxFilter,
     reviewInboxRows,
     reviewInboxSearch,
-    reviewInboxSourceFilter,
     selectedInboxRow,
+    selectedInboxHydrating,
     selectedPullRequest,
     selectedRepo,
     selectedSource,
@@ -166,6 +239,5 @@ export function useReviewInbox({
     setSelectedSource,
     selectInboxRow,
     changeActiveFilter,
-    changeSourceFilter,
   };
 }

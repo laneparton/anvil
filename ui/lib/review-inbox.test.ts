@@ -65,6 +65,13 @@ describe("review inbox helpers", () => {
     expect(mergeReviewInboxRows([current], [next])).toEqual([next]);
   });
 
+  it("replaces stale cached rows with refreshed provider rows", () => {
+    const cached = reviewInboxRowToPullRequest(row({ title: "Cached title", cacheStatus: "stale" }));
+    const refreshed = reviewInboxRowToPullRequest(row({ title: "Fresh title", cacheStatus: "fresh" }));
+
+    expect(mergeReviewInboxRows([cached], [refreshed])).toEqual([refreshed]);
+  });
+
   it("resolves review pull request number from number, pullRequestId, or id", () => {
     expect(getReviewPullRequestNumber({ ...reviewInboxRowToPullRequest(row()), number: 42 })).toBe("42");
     expect(getReviewPullRequestNumber({ ...reviewInboxRowToPullRequest(row()), number: undefined })).toBe("PR_kwDO");

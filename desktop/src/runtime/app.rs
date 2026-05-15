@@ -14,6 +14,7 @@ pub fn run() {
             super::scm::list_bitbucket_repos,
             super::scm::list_bitbucket_pull_requests,
             super::scm::list_review_inbox,
+            super::scm::hydrate_review_inbox_row,
             super::session::start_review_session,
             super::session::cancel_review_session,
             super::session::submit_review_session,

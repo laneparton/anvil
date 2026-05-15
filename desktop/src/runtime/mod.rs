@@ -7,6 +7,7 @@ mod external;
 mod git;
 mod metadata;
 mod process;
+mod provider_cache;
 mod review;
 mod scm;
 mod session;
@@ -106,6 +107,7 @@ pub(crate) fn review_inbox_smoke_json(
         providers,
         repos: None,
         limit: Some(limit),
+        cache_mode: None,
     };
 
     scm::list_review_inbox_blocking(Some(request))

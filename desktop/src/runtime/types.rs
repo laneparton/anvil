@@ -414,6 +414,24 @@ pub(crate) struct ReviewInboxRequest {
     pub(crate) providers: Option<Vec<String>>,
     pub(crate) repos: Option<Vec<String>>,
     pub(crate) limit: Option<usize>,
+    pub(crate) cache_mode: Option<ReviewInboxCacheMode>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxHydrateRequest {
+    pub(crate) source: String,
+    pub(crate) repo: String,
+    pub(crate) pull_request: String,
+    pub(crate) cache_mode: Option<ReviewInboxCacheMode>,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ReviewInboxCacheMode {
+    CacheFirst,
+    #[default]
+    Refresh,
 }
 
 #[derive(Clone, Serialize)]
@@ -436,6 +454,58 @@ pub(crate) struct ReviewInboxRow {
     pub(crate) needs_review: bool,
     pub(crate) is_created_by_me: bool,
     pub(crate) is_assigned_to_me: bool,
+    pub(crate) cache_status: Option<String>,
+    pub(crate) cached_at: Option<u64>,
+    pub(crate) description: Option<String>,
+    pub(crate) labels: Vec<String>,
+    pub(crate) commits_count: Option<u64>,
+    pub(crate) comments_count: Option<u64>,
+    pub(crate) tasks_count: Option<u64>,
+    pub(crate) additions_count: Option<u64>,
+    pub(crate) deletions_count: Option<u64>,
+    pub(crate) checks: Option<ReviewInboxCheckSummary>,
+    pub(crate) approvals: Option<ReviewInboxApprovalSummary>,
+    pub(crate) requested_reviewers: Vec<String>,
+    pub(crate) changed_file_groups: Vec<ReviewInboxChangedFileGroup>,
+    pub(crate) activity: Vec<ReviewInboxActivity>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxCheckSummary {
+    pub(crate) passing: u64,
+    pub(crate) failing: u64,
+    pub(crate) pending: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxApprovalSummary {
+    pub(crate) received: u64,
+    pub(crate) required: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxChangedFileGroup {
+    pub(crate) label: String,
+    pub(crate) files: Vec<ReviewInboxChangedFile>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxChangedFile {
+    pub(crate) path: String,
+    pub(crate) additions: u64,
+    pub(crate) deletions: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReviewInboxActivity {
+    pub(crate) actor: String,
+    pub(crate) detail: String,
+    pub(crate) age: String,
 }
 
 #[derive(Clone)]

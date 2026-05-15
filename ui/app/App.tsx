@@ -101,7 +101,6 @@ export function App() {
 
   const {
     changeActiveFilter,
-    changeSourceFilter,
     launcherError,
     launcherLoading,
     launcherRefreshing,
@@ -109,8 +108,8 @@ export function App() {
     reviewInboxFilter,
     reviewInboxRows,
     reviewInboxSearch,
-    reviewInboxSourceFilter,
     selectedInboxRow,
+    selectedInboxHydrating,
     selectedPullRequest,
     selectedRepo,
     selectedSource,
@@ -259,10 +258,10 @@ export function App() {
         pullRequests={reviewInboxRows}
         selectedRowId={selectedPullRequest}
         activeFilter={reviewInboxFilter}
-        sourceFilter={reviewInboxSourceFilter}
         searchQuery={reviewInboxSearch}
         loading={launcherLoading}
         refreshing={launcherRefreshing}
+        selectedDetailsLoading={selectedInboxHydrating}
         error={launcherError}
         providersEnabled={
           settingsLoaded &&
@@ -270,7 +269,6 @@ export function App() {
         }
         onSelectRow={selectInboxRow}
         onActiveFilterChange={changeActiveFilter}
-        onSourceFilterChange={changeSourceFilter}
         onSearchQueryChange={setReviewInboxSearch}
         onRefresh={refreshInbox}
         onOpenSettings={openSettings}

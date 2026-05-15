@@ -29,7 +29,7 @@ export function QueueGroup({ group, rows, selectedId, active, onActivate, onSele
     <section className="border-b">
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left hover:bg-accent/45"
+        className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left hover:bg-accent/45"
         onClick={() => {
           onActivate();
           setExpanded((current) => !current);
@@ -53,7 +53,7 @@ export function QueueGroup({ group, rows, selectedId, active, onActivate, onSele
             >
               {group.label}
             </span>
-            <span className="block truncate text-xs text-muted-foreground">{group.description}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{group.description}</span>
           </span>
         </span>
         <span className="shrink-0 text-xs font-semibold text-muted-foreground">{rows.length}</span>

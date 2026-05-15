@@ -21,6 +21,27 @@ const mockInboxRows = [
     needsReview: true,
     isCreatedByMe: false,
     isAssignedToMe: false,
+    cacheStatus: "fresh",
+    description: "Tightens the cached review inbox behavior.",
+    labels: ["review", "runtime"],
+    commitsCount: 2,
+    commentsCount: 3,
+    tasksCount: 2,
+    additionsCount: 40,
+    deletionsCount: 8,
+    approvals: { received: 1, required: 1 },
+    requestedReviewers: ["lane"],
+    changedFileGroups: [
+      {
+        label: "ui",
+        files: [{ path: "ui/app/useReviewInbox.ts", additions: 24, deletions: 4 }],
+      },
+      {
+        label: "desktop",
+        files: [{ path: "desktop/src/runtime/scm.rs", additions: 16, deletions: 4 }],
+      },
+    ],
+    activity: [{ actor: "reviewer", detail: "updated this pull request", age: "today" }],
   },
   ...Array.from({ length: 30 }, (_, index) => ({
     source: "bitbucket",
@@ -37,6 +58,7 @@ const mockInboxRows = [
     needsReview: false,
     isCreatedByMe: true,
     isAssignedToMe: false,
+    cacheStatus: "fresh",
   })),
 ];
 
@@ -92,6 +114,45 @@ export const { test, expect } = createTauriTest({
           ? mockInboxRows.filter((row) => providers.includes(row.source))
           : mockInboxRows,
         errors: [],
+      };
+    },
+    hydrate_review_inbox_row: (args: unknown) => {
+      const request = typeof args === "object" && args !== null ? (args as { request?: unknown }).request : undefined;
+      const repo = typeof request === "object" && request !== null
+        ? (request as { repo?: unknown }).repo
+        : undefined;
+      const pullRequest = typeof request === "object" && request !== null
+        ? (request as { pullRequest?: unknown }).pullRequest
+        : undefined;
+      const row = mockInboxRows.find(
+        (candidate) =>
+          candidate.repoId === repo &&
+          String(candidate.number ?? candidate.id) === String(pullRequest),
+      );
+      if (!row) return { row };
+      return {
+        row: {
+          ...row,
+          cacheStatus: "fresh",
+          description: row.description ?? `${row.title} has hydrated provider detail.`,
+          commitsCount: row.commitsCount ?? 2,
+          commentsCount: row.commentsCount ?? 1,
+          tasksCount: row.tasksCount ?? 2,
+          additionsCount: row.additionsCount ?? 18,
+          deletionsCount: row.deletionsCount ?? 3,
+          checks: row.checks ?? { passing: 1, failing: 0, pending: 0 },
+          approvals: row.approvals ?? { received: 1, required: 1 },
+          requestedReviewers: row.requestedReviewers ?? ["lane"],
+          changedFileGroups: row.changedFileGroups ?? [
+            {
+              label: "src",
+              files: [{ path: "src/hydrated-provider-detail.ts", additions: 18, deletions: 3 }],
+            },
+          ],
+          activity: row.activity ?? [
+            { actor: row.author, detail: "updated this pull request", age: row.age },
+          ],
+        },
       };
     },
     start_review_session: (args: unknown) => {

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cloud, GitPullRequest, Inbox, Loader2, RefreshCw, Search, Settings } from "lucide-react";
+import { GitPullRequest, Inbox, Loader2, RefreshCw, Search, Settings } from "lucide-react";
 
 import { AppShell } from "@/app/AppShell";
 import { parseManualPullRequestUrl } from "@/app/LauncherScreen";
@@ -8,9 +8,7 @@ import { Button } from "@/components/ui/button";
 
 import { ManualPullRequestDialog } from "./review-queue/ManualPullRequestDialog";
 import {
-  countSources,
   filterForGroup,
-  matchesSource,
   normalizeQueuePullRequest,
   queueGroups,
   queueRowInGroup,
@@ -19,22 +17,20 @@ import {
 import { QueueEmptyState } from "./review-queue/QueueEmptyState";
 import { QueueGroup } from "./review-queue/QueueGroup";
 import { QueueNoSelection, QueuePreview } from "./review-queue/QueuePreview";
-import { SourceFilterButton } from "./review-queue/SourceFilterButton";
 import type { ReviewQueueWorkbenchProps } from "./review-queue/types";
 
 export function ReviewQueueWorkbench({
   pullRequests,
   selectedRowId,
   activeFilter = "allOpen",
-  sourceFilter,
   searchQuery,
   loading,
   refreshing,
+  selectedDetailsLoading = false,
   error,
   providersEnabled,
   onSelectRow,
   onActiveFilterChange,
-  onSourceFilterChange,
   onSearchQueryChange,
   onRefresh,
   onPrepare,
@@ -46,8 +42,7 @@ export function ReviewQueueWorkbench({
   const [manualError, setManualError] = React.useState<string | undefined>();
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rows = React.useMemo(() => pullRequests.map(normalizeQueuePullRequest), [pullRequests]);
-  const sourceFilteredRows = rows.filter((row) => matchesSource(row, sourceFilter));
-  const filteredRows = sourceFilteredRows.filter((row) => {
+  const filteredRows = rows.filter((row) => {
     if (!normalizedQuery) return true;
     return [row.title, row.repoName, row.repo, row.providerSource, row.author, row.number]
       .join(" ")
@@ -58,7 +53,6 @@ export function ReviewQueueWorkbench({
     filteredRows.find((row) => row.id === selectedRowId) ??
     rows.find((row) => row.id === selectedRowId) ??
     filteredRows[0];
-  const sourceCounts = countSources(rows);
   const isFetching = loading || refreshing;
 
   const handleManualPrepare = () => {
@@ -145,15 +139,19 @@ export function ReviewQueueWorkbench({
                 {pullRequests.length} PRs
               </Badge>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {isFetching ? <Loader2 className="size-3.5 animate-spin" /> : <Inbox className="size-3.5" />}
-              <span data-testid="review-inbox-status">
-                {isFetching ? "Loading" : `${filteredRows.length} visible`}
+            {isFetching ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                <span data-testid="review-inbox-status">Loading</span>
+              </div>
+            ) : (
+              <span data-testid="review-inbox-status" className="sr-only">
+                Loaded
               </span>
-            </div>
+            )}
           </div>
 
-          <div className="grid gap-3 border-b px-5 py-3">
+          <div className="border-b px-5 py-3">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -163,28 +161,6 @@ export function ReviewQueueWorkbench({
                 className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50"
               />
             </label>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <SourceFilterButton
-                label="All sources"
-                selected={sourceFilter === "all"}
-                count={rows.length}
-                onClick={() => onSourceFilterChange("all")}
-              />
-              <SourceFilterButton
-                label="GitHub"
-                icon={GitPullRequest}
-                selected={sourceFilter === "github"}
-                count={sourceCounts.github}
-                onClick={() => onSourceFilterChange("github")}
-              />
-              <SourceFilterButton
-                label="Bitbucket"
-                icon={Cloud}
-                selected={sourceFilter === "bitbucket"}
-                count={sourceCounts.bitbucket}
-                onClick={() => onSourceFilterChange("bitbucket")}
-              />
-            </div>
           </div>
 
           <div className="min-h-0 overflow-y-auto" data-testid="pull-request-list">
@@ -233,11 +209,12 @@ export function ReviewQueueWorkbench({
 
         <main className="min-h-0 overflow-hidden bg-background">
           {selected ? (
-            <QueuePreview
-              pullRequest={selected}
-              onPrepare={() => onPrepare(selected.raw)}
-              onOpenProvider={() => onOpenProvider(selected.raw)}
-            />
+                <QueuePreview
+                  pullRequest={selected}
+                  detailsLoading={selectedDetailsLoading}
+                  onPrepare={() => onPrepare(selected.raw)}
+                  onOpenProvider={() => onOpenProvider(selected.raw)}
+                />
           ) : (
             <QueueNoSelection />
           )}

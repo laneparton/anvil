@@ -1,9 +1,7 @@
-import { ChevronRight } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 import { initialsFor, providerIcon, providerIconTone } from "./format";
-import { QueueStatusDot, QueueStatusPill } from "./StatusPill";
+import { QueueStatusDot } from "./StatusPill";
 import type { QueuePullRequest } from "./types";
 
 type QueueRowProps = {
@@ -19,7 +17,7 @@ export function QueueRow({ pullRequest, selected, onSelect }: QueueRowProps) {
     <button
       type="button"
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-l-2 px-5 py-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
+        "grid w-full border-l-2 px-5 py-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35",
         selected ? "border-l-primary bg-primary/[0.055]" : "border-l-transparent hover:bg-accent/60",
       )}
       onClick={onSelect}
@@ -44,14 +42,25 @@ export function QueueRow({ pullRequest, selected, onSelect }: QueueRowProps) {
           </span>
           <span>{pullRequest.age}</span>
           {pullRequest.changedFilesCount !== undefined ? <span>{pullRequest.changedFilesCount} files</span> : null}
+          {isNonOpenStatus(pullRequest.status) ? (
+            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-medium capitalize text-muted-foreground">
+              {pullRequest.status}
+            </span>
+          ) : null}
+          {pullRequest.cacheStatus === "stale" ? (
+            <span className="rounded-sm bg-anvil-attention/12 px-1.5 py-0.5 font-medium text-anvil-attention">
+              stale
+            </span>
+          ) : pullRequest.cacheStatus === "cached" ? (
+            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">cached</span>
+          ) : null}
         </span>
-      </span>
-      <span className="grid content-center justify-items-end gap-2">
-        <QueueStatusPill status={pullRequest.status} />
-        <ChevronRight
-          className={cn("size-4 text-muted-foreground transition-opacity", selected ? "opacity-100" : "opacity-0")}
-        />
       </span>
     </button>
   );
+}
+
+function isNonOpenStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "open" && normalized !== "ready";
 }

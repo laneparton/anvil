@@ -1,7 +1,6 @@
 import type {
   ReviewInboxFilter,
   ReviewInboxPullRequest,
-  ReviewInboxSourceFilter,
 } from "@/app/LauncherScreen";
 
 import type { QueueGroupDefinition, QueuePullRequest, QueueState } from "./types";
@@ -57,6 +56,20 @@ export function normalizeQueuePullRequest(pullRequest: ReviewInboxPullRequest): 
       pullRequest.needsReview ?? (pullRequest.reviewStatus ? pullRequest.reviewStatus === "needsReview" : true),
     isCreatedByMe: Boolean(pullRequest.isCreatedByMe || pullRequest.reviewStatus === "createdByMe"),
     isAssignedToMe: Boolean(pullRequest.isAssignedToMe || pullRequest.reviewStatus === "assignedToMe"),
+    cacheStatus: pullRequest.cacheStatus,
+    cachedAt: pullRequest.cachedAt,
+    description: pullRequest.description,
+    labels: pullRequest.labels,
+    commitsCount: pullRequest.commitsCount,
+    commentsCount: pullRequest.commentsCount,
+    tasksCount: pullRequest.tasksCount,
+    additionsCount: pullRequest.additionsCount,
+    deletionsCount: pullRequest.deletionsCount,
+    checks: pullRequest.checks,
+    approvals: pullRequest.approvals,
+    requestedReviewers: pullRequest.requestedReviewers,
+    changedFileGroups: pullRequest.changedFileGroups,
+    activity: pullRequest.activity,
   };
 }
 
@@ -72,17 +85,6 @@ export function filterForGroup(group: QueueState): ReviewInboxFilter {
   if (group === "assigned-to-me") return "assignedToMe";
   if (group === "all-open") return "allOpen";
   return "needsReview";
-}
-
-export function matchesSource(row: QueuePullRequest, sourceFilter: ReviewInboxSourceFilter) {
-  return sourceFilter === "all" || row.source === sourceFilter;
-}
-
-export function countSources(rows: QueuePullRequest[]) {
-  return {
-    github: rows.filter((row) => row.source === "github").length,
-    bitbucket: rows.filter((row) => row.source === "bitbucket").length,
-  };
 }
 
 export function sourceId(source: unknown) {

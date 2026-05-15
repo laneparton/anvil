@@ -26,15 +26,38 @@ export type ReviewPullRequest = {
   needsReview?: boolean;
   isCreatedByMe?: boolean;
   isAssignedToMe?: boolean;
+  cacheStatus?: "fresh" | "cached" | "stale";
+  cachedAt?: number;
+  description?: string;
+  labels?: string[];
+  commitsCount?: number;
+  commentsCount?: number;
+  tasksCount?: number;
+  additionsCount?: number;
+  deletionsCount?: number;
+  checks?: ReviewInboxCheckSummary;
+  approvals?: ReviewInboxApprovalSummary;
+  requestedReviewers?: string[];
+  changedFileGroups?: ReviewInboxChangedFileGroup[];
+  activity?: ReviewInboxActivity[];
 };
 
 export type ReviewInboxFilter = "needsReview" | "createdByMe" | "assignedToMe" | "allOpen";
+export type ReviewInboxCacheMode = "cacheFirst" | "refresh";
 
 export type ReviewInboxRequest = {
   filter?: ReviewInboxFilter;
   providers?: string[];
   repos?: string[];
   limit?: number;
+  cacheMode?: ReviewInboxCacheMode;
+};
+
+export type ReviewInboxHydrateRequest = {
+  source: string;
+  repo: string;
+  pullRequest: string | number;
+  cacheMode?: ReviewInboxCacheMode;
 };
 
 export type ReviewInboxRow = {
@@ -55,6 +78,46 @@ export type ReviewInboxRow = {
   needsReview?: boolean;
   isCreatedByMe?: boolean;
   isAssignedToMe?: boolean;
+  cacheStatus?: "fresh" | "cached" | "stale";
+  cachedAt?: number;
+  description?: string;
+  labels?: string[];
+  commitsCount?: number;
+  commentsCount?: number;
+  tasksCount?: number;
+  additionsCount?: number;
+  deletionsCount?: number;
+  checks?: ReviewInboxCheckSummary;
+  approvals?: ReviewInboxApprovalSummary;
+  requestedReviewers?: string[];
+  changedFileGroups?: ReviewInboxChangedFileGroup[];
+  activity?: ReviewInboxActivity[];
+};
+
+export type ReviewInboxCheckSummary = {
+  passing: number;
+  failing: number;
+  pending: number;
+};
+
+export type ReviewInboxApprovalSummary = {
+  received: number;
+  required: number;
+};
+
+export type ReviewInboxChangedFileGroup = {
+  label: string;
+  files: Array<{
+    path: string;
+    additions: number;
+    deletions: number;
+  }>;
+};
+
+export type ReviewInboxActivity = {
+  actor: string;
+  detail: string;
+  age: string;
 };
 
 export type ReviewInboxResult = {
@@ -63,6 +126,10 @@ export type ReviewInboxResult = {
     provider?: string;
     message?: string;
   }>;
+};
+
+export type ReviewInboxHydrateResult = {
+  row?: ReviewInboxRow;
 };
 
 export type StartReviewSessionRequest = {
@@ -194,6 +261,17 @@ export async function listReviewInbox(request: ReviewInboxRequest): Promise<Revi
   return {
     rows: Array.isArray(data?.rows) ? data.rows : [],
     errors: Array.isArray(data?.errors) ? data.errors : [],
+  };
+}
+
+export async function hydrateReviewInboxRow(
+  request: ReviewInboxHydrateRequest,
+): Promise<ReviewInboxHydrateResult> {
+  const data = await tauriInvoke<Partial<ReviewInboxHydrateResult> | undefined>("hydrate_review_inbox_row", {
+    request,
+  });
+  return {
+    row: typeof data?.row === "object" && data.row !== null ? data.row : undefined,
   };
 }
 
