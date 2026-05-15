@@ -47,3 +47,38 @@
     font: inherit;
   }
 }
+
+@layer utilities {
+  .anvil-progress-strip {
+    animation: anvil-progress-slide 1.35s ease-in-out infinite;
+  }
+
+  .anvil-pending-ghost {
+    animation: anvil-pending-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes anvil-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  55% {
+    transform: translateX(180%);
+  }
+
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes anvil-pending-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}

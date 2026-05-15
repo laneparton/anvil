@@ -28,6 +28,17 @@ export function ReviewCompleteState({
   submitState: SubmitState;
   slices: ReviewProgressSlice[];
 }) {
+  const handledLocalItems = slices.flatMap((slice) =>
+    slice.comments.flatMap((comment) =>
+      comment.decision === "dismissed" || comment.decision === "resolved"
+        ? [`${comment.decision}: ${comment.file}:${comment.line}`]
+        : [],
+    ),
+  );
+  const acknowledgedDeferredItems = deferredSlices.flatMap((slice) =>
+    slice.reviewed ? [`${slice.title}: ${slice.deferReason || "Needs later review."}`] : [],
+  );
+
   return (
     <div className="grid w-full max-w-3xl gap-3">
       <ReviewCompletePanel
@@ -60,17 +71,12 @@ export function ReviewCompleteState({
           },
           {
             title: "Handled locally",
-            items: slices
-              .flatMap((slice) => slice.comments)
-              .filter((comment) => comment.decision === "dismissed" || comment.decision === "resolved")
-              .map((comment) => `${comment.decision}: ${comment.file}:${comment.line}`),
+            items: handledLocalItems,
             emptyMessage: "No dismissed or fixed findings.",
           },
           {
             title: "Deferred acknowledged",
-            items: deferredSlices
-              .filter((slice) => slice.reviewed)
-              .map((slice) => `${slice.title}: ${slice.deferReason || "Needs later review."}`),
+            items: acknowledgedDeferredItems,
             emptyMessage: "No deferred slices.",
           },
         ]}

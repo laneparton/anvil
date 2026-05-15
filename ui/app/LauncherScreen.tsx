@@ -97,9 +97,12 @@ export type LauncherScreenProps = {
   onRepoSearchChange?: (query: string) => void;
 };
 
+const EMPTY_PULL_REQUESTS: ReviewInboxPullRequest[] = [];
+const EMPTY_REPOS: ReviewRepo[] = [];
+
 export function LauncherScreen({
-  pullRequests = [],
-  repos = [],
+  pullRequests = EMPTY_PULL_REQUESTS,
+  repos = EMPTY_REPOS,
   selectedRowId,
   activeFilter = "needsReview",
   sourceFilter,
@@ -449,7 +452,6 @@ export function LauncherScreen({
                       handleManualPrepare();
                     }
                   }}
-                  autoFocus
                   placeholder="https://bitbucket.org/workspace/repo/pull-requests/45"
                   className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary/50"
                   data-testid="manual-pr-url"

@@ -18,7 +18,6 @@ export function ReviewScreen({
   agentLaunchState,
   appSettings,
   clearReview,
-  commentsByHunk,
   currentComment,
   handleCommentDecision,
   handleOpenAgent,
@@ -27,7 +26,7 @@ export function ReviewScreen({
   onOpenSettings,
   onOpenProvider,
   openComments,
-  pendingSliceIds,
+  pendingSliceCount,
   providerPullRequestLink,
   prepareEvent,
   progress,
@@ -49,7 +48,6 @@ export function ReviewScreen({
   agentLaunchState: AgentLaunchState;
   appSettings: AppSettings;
   clearReview: () => void;
-  commentsByHunk: Map<string, ReviewProgressComment[]>;
   currentComment: ReviewProgressComment | undefined;
   deferredSlices: ReviewProgressSlice[];
   handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
@@ -60,7 +58,7 @@ export function ReviewScreen({
   onOpenSettings: () => void;
   onOpenProvider?: () => void;
   openComments: ReviewProgressComment[];
-  pendingSliceIds: Set<string>;
+  pendingSliceCount: number;
   providerPullRequestLink?: ProviderPullRequestLink;
   prepareEvent?: ReviewSessionEvent;
   progress: UseReviewProgressResult;
@@ -83,7 +81,6 @@ export function ReviewScreen({
       agentLaunchState={agentLaunchState}
       appSettings={appSettings}
       clearReview={clearReview}
-      commentsByHunk={commentsByHunk}
       currentComment={currentComment}
       handleCommentDecision={handleCommentDecision}
       handleOpenAgent={handleOpenAgent}
@@ -92,7 +89,7 @@ export function ReviewScreen({
       onOpenSettings={onOpenSettings}
       onOpenProvider={onOpenProvider}
       openComments={openComments}
-      pendingSliceIds={pendingSliceIds}
+      pendingSliceCount={pendingSliceCount}
       providerPullRequestLink={providerPullRequestLink}
       prepareEvent={prepareEvent}
       progress={progress}

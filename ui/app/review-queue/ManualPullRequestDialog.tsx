@@ -48,7 +48,6 @@ export function ManualPullRequestDialog({
             onKeyDown={(event) => {
               if (event.key === "Enter") onPrepare();
             }}
-            autoFocus
             placeholder="https://bitbucket.org/workspace/repo/pull-requests/45"
             className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary/50"
             data-testid="manual-pr-url"

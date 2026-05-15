@@ -11,7 +11,7 @@ import { openProviderPullRequestUrl, resolveProviderPullRequestLink } from "@/li
 import { type CommentDecision, type ReviewProgressComment, useReviewProgress } from "@/lib/review-progress";
 import type { ReviewPlan } from "@/lib/review-types";
 import { getReviewPullRequestNumber, normalizeReviewSource } from "@/lib/review-inbox";
-import { findNextReviewSlice, groupComments } from "@/lib/review-workflow";
+import { findNextReviewSlice } from "@/lib/review-workflow";
 
 import { useAppSettings } from "./useAppSettings";
 import { useReviewAgentLaunch } from "./useReviewAgentLaunch";
@@ -135,7 +135,6 @@ export function App() {
     [active.comments],
   );
   const currentComment = openComments.find((comment) => comment.id === selectedCommentId) ?? openComments[0];
-  const commentsByHunk = React.useMemo(() => groupComments(openComments), [openComments]);
   const activeIndex = progress.slices.findIndex((slice) => slice.id === active.id);
   const activePending = pendingSliceIds.has(active.id);
   const highRiskPendingCount = progress.slices.filter(
@@ -319,7 +318,6 @@ export function App() {
       agentLaunchState={agentLaunchState}
       appSettings={appSettings}
       clearReview={clearReview}
-      commentsByHunk={commentsByHunk}
       currentComment={currentComment}
       deferredSlices={deferredSlices}
       handleCommentDecision={handleCommentDecision}
@@ -339,7 +337,7 @@ export function App() {
           : undefined
       }
       openComments={openComments}
-      pendingSliceIds={pendingSliceIds}
+      pendingSliceCount={pendingSliceIds.size}
       providerPullRequestLink={providerPullRequestLink}
       prepareEvent={prepareState.events[prepareState.events.length - 1]}
       progress={progress}

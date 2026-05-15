@@ -152,53 +152,108 @@ export function DecisionStage({
 
       {currentQuestion ? <OpenQuestionBanner question={currentQuestion} /> : null}
 
-      <section className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <Eye className="size-4 text-primary" />
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inspect evidence</h3>
-          </div>
-          <span className="truncate font-mono text-xs text-muted-foreground">{primaryFile}</span>
-        </div>
-
-        {currentComment && openComments.length > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
-            <span className="text-xs text-muted-foreground">Select finding</span>
-            <div className="flex flex-wrap gap-1">
-              {openComments.map((comment, index) => (
-                <button
-                  key={comment.id}
-                  type="button"
-                  onClick={() => setSelectedCommentId(comment.id)}
-                  className={cn(
-                    "grid size-7 place-items-center rounded-md border text-xs",
-                    comment.id === selectedCommentId
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:bg-accent",
-                  )}
-                >
-                  {index + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="overflow-x-auto">
-          {evidenceHunks.map((hunk) => (
-            <EvidenceHunk
-              key={hunk.hunkId}
-              hunk={hunk}
-              currentComment={currentComment}
-              draft={draft}
-              setCommentDraft={setCommentDraft}
-            />
-          ))}
-        </div>
-      </section>
+      <EvidencePanel
+        key={active.id}
+        currentComment={currentComment}
+        draft={draft}
+        evidenceHunks={evidenceHunks}
+        openComments={openComments}
+        primaryFile={primaryFile}
+        selectedCommentId={selectedCommentId}
+        setCommentDraft={setCommentDraft}
+        setSelectedCommentId={setSelectedCommentId}
+      />
 
       {!currentComment ? <ReviewerBrief slice={active} actionableQuestions={actionableQuestions} /> : null}
     </div>
+  );
+}
+
+function EvidencePanel({
+  currentComment,
+  draft,
+  evidenceHunks,
+  openComments,
+  primaryFile,
+  selectedCommentId,
+  setCommentDraft,
+  setSelectedCommentId,
+}: {
+  currentComment?: ReviewProgressComment;
+  draft: string;
+  evidenceHunks: Hunk[];
+  openComments: ReviewProgressComment[];
+  primaryFile: string;
+  selectedCommentId?: string;
+  setCommentDraft: (commentId: string, draft: string) => void;
+  setSelectedCommentId: (commentId: string) => void;
+}) {
+  const [visibleHunkCount, setVisibleHunkCount] = React.useState(INITIAL_RENDERED_HUNKS);
+  const visibleHunks = evidenceHunks.slice(0, visibleHunkCount);
+  const hiddenHunkCount = Math.max(evidenceHunks.length - visibleHunks.length, 0);
+
+  return (
+    <section className="overflow-hidden rounded-lg border bg-card shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Eye className="size-4 text-primary" />
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inspect evidence</h3>
+        </div>
+        <span className="truncate font-mono text-xs text-muted-foreground">{primaryFile}</span>
+      </div>
+
+      {currentComment && openComments.length > 1 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
+          <span className="text-xs text-muted-foreground">Select finding</span>
+          <div className="flex flex-wrap gap-1">
+            {openComments.map((comment, index) => (
+              <button
+                key={comment.id}
+                type="button"
+                onClick={() => setSelectedCommentId(comment.id)}
+                className={cn(
+                  "grid size-7 place-items-center rounded-md border text-xs",
+                  comment.id === selectedCommentId
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-accent",
+                )}
+              >
+                {index + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        {visibleHunks.map((hunk) => {
+          const activeComment = currentComment && hunkMatchesComment(hunk, currentComment) ? currentComment : undefined;
+
+          return (
+            <EvidenceHunk
+              key={hunk.hunkId}
+              hunk={hunk}
+              currentComment={activeComment}
+              draft={activeComment ? draft : ""}
+              setCommentDraft={setCommentDraft}
+            />
+          );
+        })}
+      </div>
+
+      {hiddenHunkCount > 0 ? (
+        <div className="border-t bg-muted/20 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setVisibleHunkCount((count) => count + RENDERED_HUNK_BATCH_SIZE)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            Show {Math.min(hiddenHunkCount, RENDERED_HUNK_BATCH_SIZE)} more hunk
+            {Math.min(hiddenHunkCount, RENDERED_HUNK_BATCH_SIZE) === 1 ? "" : "s"} ({hiddenHunkCount} hidden)
+          </button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -248,7 +303,7 @@ function BriefRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EvidenceHunk({
+const EvidenceHunk = React.memo(function EvidenceHunk({
   hunk,
   currentComment,
   draft,
@@ -329,7 +384,7 @@ function EvidenceHunk({
             const hiddenBefore = index - previousLineIndex - 1;
             previousLineIndex = index;
             return (
-              <React.Fragment key={`${hunk.hunkId}:${index}`}>
+              <React.Fragment key={diffLineKey(hunk.hunkId, line)}>
                 {hiddenBefore > 0 ? (
                   <HiddenLinesButton count={hiddenBefore} onExpand={() => setFullHunkVisible(true)} />
                 ) : null}
@@ -370,7 +425,7 @@ function EvidenceHunk({
       )}
     </div>
   );
-}
+});
 
 function HiddenLinesButton({ count, onExpand }: { count: number; onExpand: () => void }) {
   return (
@@ -433,6 +488,8 @@ function InlineDraftComment({
 const COMPACT_DIFF_CONTEXT_RADIUS = 1;
 const COMMENT_DIFF_CONTEXT_RADIUS = 2;
 const COMPACT_DIFF_MAX_LINES = 12;
+const INITIAL_RENDERED_HUNKS = 24;
+const RENDERED_HUNK_BATCH_SIZE = 24;
 
 function compactDiffLineIndexes(lines: Hunk["lines"], targetLine: number | string | undefined) {
   if (lines.length <= COMPACT_DIFF_MAX_LINES) {
@@ -440,11 +497,12 @@ function compactDiffLineIndexes(lines: Hunk["lines"], targetLine: number | strin
   }
 
   if (targetLine !== undefined && targetLine !== null) {
-    const targetIndexes = lines
-      .map((line, index) =>
-        String(line.newNumber) === String(targetLine) || String(line.oldNumber) === String(targetLine) ? index : -1,
-      )
-      .filter((index) => index >= 0);
+    const targetIndexes: number[] = [];
+    lines.forEach((line, index) => {
+      if (String(line.newNumber) === String(targetLine) || String(line.oldNumber) === String(targetLine)) {
+        targetIndexes.push(index);
+      }
+    });
 
     if (targetIndexes.length > 0) {
       return indexesAroundAnchors(lines.length, targetIndexes, COMMENT_DIFF_CONTEXT_RADIUS);
@@ -482,7 +540,17 @@ function indexesAroundAnchors(lineCount: number, anchors: number[], radius: numb
     }
   }
 
-  return [...visible].sort((a, b) => a - b);
+  return Array.from(visible).sort((a, b) => a - b);
+}
+
+function diffLineKey(hunkId: string, line: Hunk["lines"][number]) {
+  return [
+    hunkId,
+    line.kind,
+    line.oldNumber ?? "old",
+    line.newNumber ?? "new",
+    line.text,
+  ].join(":");
 }
 
 function shouldRenderInlineDraft(
@@ -515,12 +583,18 @@ function getEvidenceHunks(slice: ReviewProgressSlice): Hunk[] {
 function sortEvidenceHunks(hunks: Hunk[], currentComment: ReviewProgressComment | undefined): Hunk[] {
   if (!currentComment) return hunks;
 
-  const activeIndex = hunks.findIndex(
-    (hunk) => hunk.hunkId === currentComment.hunkId || (hunk.file === currentComment.file && hunk.lines.some((line) => String(line.newNumber ?? line.oldNumber) === String(currentComment.line))),
-  );
+  const activeIndex = hunks.findIndex((hunk) => hunkMatchesComment(hunk, currentComment));
   if (activeIndex <= 0) return hunks;
 
   return [hunks[activeIndex], ...hunks.slice(0, activeIndex), ...hunks.slice(activeIndex + 1)];
+}
+
+function hunkMatchesComment(hunk: Hunk, comment: ReviewProgressComment) {
+  return (
+    hunk.hunkId === comment.hunkId ||
+    (hunk.file === comment.file &&
+      hunk.lines.some((line) => String(line.newNumber ?? line.oldNumber) === String(comment.line)))
+  );
 }
 
 function RiskBadge({ risk }: { risk: ReviewProgressSlice["risk"] }) {

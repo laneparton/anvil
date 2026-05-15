@@ -71,9 +71,10 @@ export function normalizeReviewSource(source: unknown): ReviewSourceId | undefin
 }
 
 export function formatInboxErrors(errors: Array<{ provider?: string; message?: string }> | undefined): string | undefined {
-  const messages = (errors ?? [])
-    .map((error) => [error.provider, error.message].filter(Boolean).join(": "))
-    .filter(Boolean);
+  const messages = (errors ?? []).flatMap((error) => {
+    const message = [error.provider, error.message].filter(Boolean).join(": ");
+    return message ? [message] : [];
+  });
 
   return messages.length > 0 ? messages.join(" ") : undefined;
 }

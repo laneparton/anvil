@@ -69,12 +69,8 @@ const providerOptions = [
 }>;
 
 export function SettingsScreen({ settings, savedAt, onBack, onSave, onReset }: SettingsScreenProps) {
-  const [draft, setDraft] = React.useState(settings);
+  const [draft, setDraft] = React.useState(() => settings);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
@@ -387,7 +383,7 @@ function SettingsRow({
   control: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] md:items-center">
+    <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] md:items-center">
       <div className="flex min-w-0 gap-3">
         <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">

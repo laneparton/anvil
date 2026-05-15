@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, CircleAlert, Minus } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Loader2, Minus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { ReviewProgressComment, ReviewProgressSlice } from "@/lib/review-progress";
@@ -17,6 +17,7 @@ type LedgerRow = {
 type DecisionLedgerPanelProps = {
   activeId: string;
   deferredSlices: ReviewProgressSlice[];
+  pendingSliceCount: number;
   reviewComplete: boolean;
   slices: ReviewProgressSlice[];
   queuedComments: ReviewProgressComment[];
@@ -28,6 +29,7 @@ type DecisionLedgerPanelProps = {
 export function DecisionLedgerPanel({
   activeId,
   deferredSlices,
+  pendingSliceCount,
   reviewComplete,
   slices,
   queuedComments,
@@ -57,7 +59,7 @@ export function DecisionLedgerPanel({
             ))}
           </ol>
         ) : (
-          <div className="rounded-md border bg-muted/35 px-3 py-3">
+          <div className="rounded-md border bg-muted/35 p-3">
             <div className="text-sm font-medium">No open findings</div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               The remaining slices only need a quick safe/defer pass.
@@ -83,6 +85,8 @@ export function DecisionLedgerPanel({
             </ol>
           </details>
         ) : null}
+
+        {pendingSliceCount > 0 ? <PendingDecisionGhosts count={pendingSliceCount} /> : null}
       </section>
 
       <ReviewPacketCard
@@ -96,6 +100,42 @@ export function DecisionLedgerPanel({
       />
     </aside>
   );
+}
+
+function PendingDecisionGhosts({ count }: { count: number }) {
+  const ghostKeys = pendingGhostKeys(count);
+
+  return (
+    <section className="mt-3 rounded-md border border-dashed bg-background/55 p-2.5">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+          Analyzing more
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {count} pending
+        </span>
+      </div>
+      <div className="grid gap-1.5">
+        {ghostKeys.map((key) => (
+          <div
+            key={key}
+            className="anvil-pending-ghost grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2 rounded-md bg-muted/35 px-2.5 py-2.5"
+          >
+            <span className="mt-0.5 size-5 rounded-full border bg-background/70" />
+            <span className="grid min-w-0 gap-1.5">
+              <span className="h-3 w-3/4 rounded bg-muted-foreground/20" />
+              <span className="h-2.5 w-1/2 rounded bg-muted-foreground/15" />
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function pendingGhostKeys(count: number) {
+  return ["first", "second", "third"].slice(0, Math.min(count, 3));
 }
 
 function DecisionRow({

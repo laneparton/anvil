@@ -57,6 +57,22 @@ export function normalizeReviewPlan(input: ReviewPlan): ReviewPlan {
   };
 }
 
+export function findInitialReviewSliceId(plan: ReviewPlan): string | undefined {
+  const decisionSlice = plan.slices.find(hasOpenReviewWork);
+  if (decisionSlice) {
+    return decisionSlice.id;
+  }
+
+  return plan.slices.find((slice) => !slice.deferred)?.id ?? plan.slices[0]?.id;
+}
+
+export function hasOpenReviewWork(slice: Slice): boolean {
+  return (
+    !slice.deferred &&
+    (slice.inlineComments.length > 0 || filterActionableQuestions(slice.remainingQuestions).length > 0)
+  );
+}
+
 export function normalizeSlice(slice: Slice): Slice {
   return {
     ...slice,

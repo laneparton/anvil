@@ -21,6 +21,9 @@ import { initialsFor, providerIcon, providerIconTone } from "./format";
 import { QueueStatusPill } from "./StatusPill";
 import type { QueuePullRequest } from "./types";
 
+const FIVE_SKELETON_SLOTS = ["one", "two", "three", "four", "five"] as const;
+const FOUR_SKELETON_SLOTS = ["one", "two", "three", "four"] as const;
+
 type PreviewFile = {
   path: string;
   additions: number;
@@ -85,19 +88,16 @@ export function QueuePreview({
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(12rem,24rem)] items-start gap-5">
           <div className="min-w-0 max-w-3xl">
             <QueueStatusPill status={pullRequest.status} />
-            <a
-              href={pullRequest.url}
+            <button
+              type="button"
               className="mt-3 flex w-fit max-w-full items-center gap-1.5 text-lg font-semibold leading-6 text-foreground underline-offset-4 hover:text-primary hover:underline"
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenProvider();
-              }}
+              onClick={onOpenProvider}
             >
               <span className="truncate" data-testid="review-preview-title">
                 {pullRequest.title}
               </span>
               <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-            </a>
+            </button>
             <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               <ProviderIcon className={cn("size-4", providerIconTone(pullRequest.provider))} />
               <span className="truncate font-mono">{pullRequest.repoName}</span>
@@ -284,6 +284,7 @@ function ProviderStatusStrip({
   const approvalNeeded = Math.max(metadata.approvals.required - metadata.approvals.received, 0);
   const visibleReviewers = metadata.requestedReviewers.slice(0, 5);
   const hiddenReviewerCount = Math.max(metadata.requestedReviewers.length - visibleReviewers.length, 0);
+  const reviewerCounts = new Map<string, number>();
 
   if (loading) {
     return (
@@ -295,8 +296,8 @@ function ProviderStatusStrip({
         <span className="flex items-center gap-3">
           <span className="text-muted-foreground">Reviews</span>
           <span className="flex items-center">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <GhostCircle key={index} className={cn("size-7", index > 0 && "-ml-1.5")} />
+            {FIVE_SKELETON_SLOTS.map((slot, index) => (
+              <GhostCircle key={slot} className={cn("size-7", index > 0 && "-ml-1.5")} />
             ))}
           </span>
           <GhostLine className="h-5 w-16" />
@@ -310,14 +311,14 @@ function ProviderStatusStrip({
       <span className="flex items-center gap-2">
         <span className="text-muted-foreground">Checks</span>
         <span className="flex items-center gap-1">
-          {Array.from({ length: metadata.checks.passing }).map((_, index) => (
-            <CheckCircle2 key={`passing-${index}`} className="size-4 text-primary" />
+          {countKeys("passing", metadata.checks.passing).map((key) => (
+            <CheckCircle2 key={key} className="size-4 text-primary" />
           ))}
-          {Array.from({ length: metadata.checks.pending }).map((_, index) => (
-            <Circle key={`pending-${index}`} className="size-4 text-anvil-attention" />
+          {countKeys("pending", metadata.checks.pending).map((key) => (
+            <Circle key={key} className="size-4 text-anvil-attention" />
           ))}
-          {Array.from({ length: metadata.checks.failing }).map((_, index) => (
-            <CircleAlert key={`failing-${index}`} className="size-4 text-destructive" />
+          {countKeys("failing", metadata.checks.failing).map((key) => (
+            <CircleAlert key={key} className="size-4 text-destructive" />
           ))}
         </span>
         <span
@@ -336,19 +337,24 @@ function ProviderStatusStrip({
       <span className="flex min-w-0 items-center gap-2">
         <span className="text-muted-foreground">Reviews</span>
         <span className="flex min-w-0 items-center">
-          {visibleReviewers.map((reviewer, index) => (
-            <span
-              key={`${reviewer}:${index}`}
-              title={reviewer}
-              className={cn(
-                "grid size-7 place-items-center rounded-full border-2 border-card text-[10px] font-semibold",
-                index > 0 && "-ml-1.5",
-                index === 0 ? "bg-muted text-muted-foreground" : "bg-primary/12 text-primary",
-              )}
-            >
-              {initialsFor(reviewer)}
-            </span>
-          ))}
+          {visibleReviewers.map((reviewer, index) => {
+            const occurrence = reviewerCounts.get(reviewer) ?? 0;
+            reviewerCounts.set(reviewer, occurrence + 1);
+
+            return (
+              <span
+                key={`${reviewer}:${occurrence}`}
+                title={reviewer}
+                className={cn(
+                  "grid size-7 place-items-center rounded-full border-2 border-card text-[10px] font-semibold",
+                  index > 0 && "-ml-1.5",
+                  index === 0 ? "bg-muted text-muted-foreground" : "bg-primary/12 text-primary",
+                )}
+              >
+                {initialsFor(reviewer)}
+              </span>
+            );
+          })}
           {hiddenReviewerCount > 0 ? (
             <span
               title={`${hiddenReviewerCount} more reviewer${hiddenReviewerCount === 1 ? "" : "s"}`}
@@ -372,7 +378,7 @@ function PreviewGhost({ activeTab }: { activeTab: "files" | "description" | "act
     return (
       <section className="grid max-w-3xl gap-3" aria-label="Loading description">
         <GhostLine className="h-3 w-24" />
-        <div className="grid max-h-64 gap-3 overflow-hidden rounded-md border bg-background/60 px-3 py-3">
+        <div className="grid max-h-64 gap-3 overflow-hidden rounded-md border bg-background/60 p-3">
           <GhostLine className="h-4 w-5/6" />
           <GhostLine className="h-4 w-full" />
           <GhostLine className="h-4 w-3/4" />
@@ -386,8 +392,8 @@ function PreviewGhost({ activeTab }: { activeTab: "files" | "description" | "act
     return (
       <section className="grid gap-3" aria-label="Loading activity">
         <GhostLine className="h-3 w-28" />
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="grid grid-cols-[minmax(0,1fr)_4rem] gap-4 py-2.5">
+        {FOUR_SKELETON_SLOTS.map((slot) => (
+          <div key={slot} className="grid grid-cols-[minmax(0,1fr)_4rem] gap-4 py-2.5">
             <GhostLine className="h-4 w-full" />
             <GhostLine className="h-4 w-12" />
           </div>
@@ -399,8 +405,8 @@ function PreviewGhost({ activeTab }: { activeTab: "files" | "description" | "act
   return (
     <section className="grid gap-4" aria-label="Loading changed files">
       <GhostLine className="h-3 w-24" />
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="grid grid-cols-[minmax(0,1fr)_8rem_4rem] items-center gap-4">
+      {FOUR_SKELETON_SLOTS.map((slot) => (
+        <div key={slot} className="grid grid-cols-[minmax(0,1fr)_8rem_4rem] items-center gap-4">
           <GhostLine className="h-4 w-full" />
           <GhostLine className="h-2 w-32" />
           <GhostLine className="h-4 w-10" />
@@ -412,6 +418,10 @@ function PreviewGhost({ activeTab }: { activeTab: "files" | "description" | "act
 
 function GhostLine({ className }: { className?: string }) {
   return <span className={cn("block animate-pulse rounded bg-muted", className)} />;
+}
+
+function countKeys(prefix: string, count: number) {
+  return Array.from({ length: count }, (_, index) => `${prefix}-${index + 1}`);
 }
 
 function GhostCircle({ className }: { className?: string }) {
@@ -539,6 +549,13 @@ function DescriptionPreview({ metadata }: { metadata: PreviewMetadata }) {
 function MarkdownDescription({ markdown }: { markdown: string }) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];
+  const blockCounts = new Map<string, number>();
+  const nextBlockKey = (kind: string, content: string) => {
+    const baseKey = `${kind}:${content}`;
+    const occurrence = blockCounts.get(baseKey) ?? 0;
+    blockCounts.set(baseKey, occurrence + 1);
+    return `${baseKey}:${occurrence}`;
+  };
   let index = 0;
 
   while (index < lines.length) {
@@ -550,9 +567,10 @@ function MarkdownDescription({ markdown }: { markdown: string }) {
 
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading) {
+      const blockKey = nextBlockKey("heading", heading[2]);
       blocks.push(
-        <p key={`heading-${index}`} className="mt-2 first:mt-0 font-semibold uppercase tracking-wide text-foreground/80">
-          {renderInlineMarkdown(heading[2], `heading-${index}`)}
+        <p key={blockKey} className="mt-2 first:mt-0 font-semibold uppercase tracking-wide text-foreground/80">
+          <InlineMarkdown text={heading[2]} keyPrefix={blockKey} />
         </p>,
       );
       index += 1;
@@ -565,13 +583,21 @@ function MarkdownDescription({ markdown }: { markdown: string }) {
         items.push((lines[index] ?? "").trim().replace(/^[-*]\s+/, ""));
         index += 1;
       }
+      const itemCounts = new Map<string, number>();
+      const blockKey = nextBlockKey("list", items.join("\n"));
       blocks.push(
-        <ul key={`list-${index}`} className="my-2 list-disc space-y-1 pl-5">
-          {items.map((item, itemIndex) => (
-            <li key={`${item}:${itemIndex}`} className="break-words">
-              {renderInlineMarkdown(item, `list-${index}-${itemIndex}`)}
-            </li>
-          ))}
+        <ul key={blockKey} className="my-2 list-disc space-y-1 pl-5">
+          {items.map((item) => {
+            const occurrence = itemCounts.get(item) ?? 0;
+            itemCounts.set(item, occurrence + 1);
+            const itemKey = `${item}:${occurrence}`;
+
+            return (
+              <li key={itemKey} className="break-words">
+                <InlineMarkdown text={item} keyPrefix={`${blockKey}-${itemKey}`} />
+              </li>
+            );
+          })}
         </ul>,
       );
       continue;
@@ -586,9 +612,11 @@ function MarkdownDescription({ markdown }: { markdown: string }) {
       index += 1;
     }
 
+    const paragraphText = paragraph.join(" ");
+    const blockKey = nextBlockKey("paragraph", paragraphText);
     blocks.push(
-      <p key={`paragraph-${index}`} className="my-2 first:mt-0 break-words [overflow-wrap:anywhere]">
-        {renderInlineMarkdown(paragraph.join(" "), `paragraph-${index}`)}
+      <p key={blockKey} className="my-2 first:mt-0 break-words [overflow-wrap:anywhere]">
+        <InlineMarkdown text={paragraphText} keyPrefix={blockKey} />
       </p>,
     );
   }
@@ -596,7 +624,11 @@ function MarkdownDescription({ markdown }: { markdown: string }) {
   return <div>{blocks.length > 0 ? blocks : <p>No provider description is cached for this pull request yet.</p>}</div>;
 }
 
-function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[] {
+function InlineMarkdown({ text, keyPrefix }: { text: string; keyPrefix: string }) {
+  return <>{parseInlineMarkdown(text, keyPrefix)}</>;
+}
+
+function parseInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\))/g;
   let lastIndex = 0;
@@ -617,7 +649,7 @@ function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[
           rel="noreferrer"
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          {renderInlineMarkdown(match[2], `${keyPrefix}-link-label-${match.index}`)}
+          <InlineMarkdown text={match[2]} keyPrefix={`${keyPrefix}-link-label-${match.index}`} />
         </a>,
       );
     } else if (token.startsWith("`")) {

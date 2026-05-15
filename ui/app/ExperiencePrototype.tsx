@@ -1412,17 +1412,6 @@ function StatusDot({ pullRequest }: { pullRequest: PrototypeQueuePullRequest }) 
   );
 }
 
-function formatChecks(checks: PrototypeQueuePullRequest["checks"], total: number) {
-  if (checks.failing > 0) return `${checks.failing} failing`;
-  if (checks.pending > 0) return `${checks.pending} pending`;
-  return `${checks.passing}/${total} passed`;
-}
-
-function formatApprovalFact(approvals: PrototypeQueuePullRequest["approvals"]) {
-  if (approvals.required === 0) return "not required";
-  return `${approvals.received}/${approvals.required} approved`;
-}
-
 function sizeInitial(size: PrototypeQueuePullRequest["estimatedReviewSize"]) {
   return size.slice(0, 1);
 }
@@ -1648,19 +1637,6 @@ function ProviderBadge({ provider }: { provider: PrototypeQueuePullRequest["prov
     >
       {provider}
     </Badge>
-  );
-}
-
-function ProviderText({ provider }: { provider: PrototypeQueuePullRequest["provider"] }) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 text-[11px] font-semibold uppercase tracking-wide",
-        provider === "Bitbucket" ? "text-anvil-info" : "text-muted-foreground",
-      )}
-    >
-      {provider}
-    </span>
   );
 }
 
@@ -2059,19 +2035,6 @@ function shouldRenderInlineDraft(
   if (!targetLine) return false;
   if (line.newNumber === targetLine && line.kind !== "remove") return true;
   return !hasNewTargetLine && line.newNumber === null && line.oldNumber === targetLine;
-}
-
-function RiskDot({ risk }: { risk: PrototypeSlice["risk"] }) {
-  return (
-    <span
-      className={cn(
-        "size-2 shrink-0 rounded-full",
-        risk === "high" && "bg-destructive",
-        risk === "medium" && "bg-anvil-attention",
-        risk === "low" && "bg-anvil-info",
-      )}
-    />
-  );
 }
 
 function RiskBadge({ risk }: { risk: PrototypeSlice["risk"] }) {
@@ -2499,39 +2462,6 @@ function PreviewComment({ slice, draft, onOpen }: { slice: PrototypeSlice; draft
         </div>
       </div>
     </button>
-  );
-}
-
-function LedgerSection({
-  icon: Icon,
-  title,
-  items,
-  empty,
-}: {
-  icon: typeof MessageSquarePlus;
-  title: string;
-  items: string[];
-  empty: string;
-}) {
-  return (
-    <section className="rounded-lg border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="size-4" />
-        {title}
-        <Badge className="ml-auto h-5 px-1.5 text-[10px]">{items.length}</Badge>
-      </div>
-      {items.length > 0 ? (
-        <ul className="grid gap-1.5">
-          {items.map((item) => (
-            <li key={item} className="rounded-md border bg-background px-2 py-1.5 text-xs leading-5">
-              {item}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-xs leading-5 text-muted-foreground">{empty}</p>
-      )}
-    </section>
   );
 }
 

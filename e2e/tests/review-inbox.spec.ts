@@ -35,7 +35,7 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
   await firstBitbucketRow.click();
   await expect(tauriPage.getByTestId("review-preview-title")).toContainText("Bitbucket workspace smoke 1");
   await expect(tauriPage.getByText("src/hydrated-provider-detail.ts")).toBeVisible();
-  let calls = await getCapturedInvokes(tauriPage);
+  const calls = await getCapturedInvokes(tauriPage);
   expect(calls.filter((call) => call.cmd === "hydrate_review_inbox_row")).toHaveLength(2);
   expect(calls.filter((call) => call.cmd === "list_review_inbox")).toHaveLength(0);
 

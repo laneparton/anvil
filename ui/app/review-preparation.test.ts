@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createPlannedReviewPlan,
+  findInitialReviewSliceId,
   getPlannedSlices,
   mergeStreamingSlice,
   normalizeReviewPlan,
@@ -142,5 +143,44 @@ describe("review preparation helpers", () => {
       blockingComments: 1,
       openQuestions: 1,
     });
+  });
+
+  it("starts review on the first slice with findings or questions", () => {
+    const initialId = findInitialReviewSliceId(
+      plan({
+        slices: [
+          slice({ id: "setup", risk: "high", inlineComments: [], remainingQuestions: [] }),
+          slice({
+            id: "auth",
+            risk: "medium",
+            inlineComments: [
+              {
+                file: "src/auth.ts",
+                hunkId: "src/auth.ts#h1",
+                line: 12,
+                severity: "blocking",
+                body: "Guard duplicate redemption.",
+              },
+            ],
+            remainingQuestions: [],
+          }),
+        ],
+      }),
+    );
+
+    expect(initialId).toBe("auth");
+  });
+
+  it("falls back to the first non-deferred slice when no slice has open work", () => {
+    const initialId = findInitialReviewSliceId(
+      plan({
+        slices: [
+          slice({ id: "docs", risk: "low", deferred: true }),
+          slice({ id: "runtime", risk: "high", inlineComments: [], remainingQuestions: [] }),
+        ],
+      }),
+    );
+
+    expect(initialId).toBe("runtime");
   });
 });

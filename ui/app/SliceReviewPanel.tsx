@@ -183,10 +183,15 @@ function HunkView({
   onSelectComment: (commentId: string) => void;
 }) {
   const commentsByLine = React.useMemo(() => groupCommentsByLine(comments), [comments]);
-  const newLineNumbers = React.useMemo(
-    () => new Set(hunk.lines.map((line) => line.newNumber).filter((line): line is number => line !== null)),
-    [hunk.lines],
-  );
+  const newLineNumbers = React.useMemo(() => {
+    const lineNumbers = new Set<number>();
+    for (const line of hunk.lines) {
+      if (line.newNumber !== null) {
+        lineNumbers.add(line.newNumber);
+      }
+    }
+    return lineNumbers;
+  }, [hunk.lines]);
   const renderedCommentIds = new Set<string>();
   const sourceLines = React.useMemo(() => hunk.lines.map((line) => line.text || " "), [hunk.lines]);
   const highlightedLines = useHighlightedLines(sourceLines);
@@ -200,7 +205,7 @@ function HunkView({
         {hunk.lines.map((line, index) => {
           const comment = getDiffLineComment(line, commentsByLine, newLineNumbers, renderedCommentIds);
           return (
-            <React.Fragment key={`${hunk.hunkId}-${index}`}>
+            <React.Fragment key={diffLineKey(hunk.hunkId, line)}>
               <div
                 className={cn(
                   "grid min-w-full grid-cols-[48px_48px_24px_minmax(0,1fr)] font-mono text-xs leading-6",
@@ -238,6 +243,16 @@ function HunkView({
   );
 }
 
+function diffLineKey(hunkId: string, line: Hunk["lines"][number]) {
+  return [
+    hunkId,
+    line.kind,
+    line.oldNumber ?? "old",
+    line.newNumber ?? "new",
+    line.text,
+  ].join(":");
+}
+
 export function getDiffLineComment(
   line: Hunk["lines"][number],
   commentsByLine: Map<string, ReviewProgressComment[]>,
@@ -254,10 +269,11 @@ export function getDiffLineComment(
   candidates.push(line.text);
 
   for (const key of candidates) {
-    const comment = commentsByLine.get(key)?.find((candidate) => !renderedCommentIds.has(candidate.id));
-    if (comment) {
-      renderedCommentIds.add(comment.id);
-      return comment;
+    for (const candidate of commentsByLine.get(key) ?? []) {
+      if (!renderedCommentIds.has(candidate.id)) {
+        renderedCommentIds.add(candidate.id);
+        return candidate;
+      }
     }
   }
 
@@ -403,20 +419,28 @@ function HighlightedCode({ text, tokens }: { text: string; tokens: HighlightToke
     return <>{text}</>;
   }
 
+  const tokenCounts = new Map<string, number>();
+
   return (
     <>
-      {tokens.map((token, index) => (
-        <span
-          key={`${index}:${token.content}`}
-          style={{
-            color: token.color,
-            fontStyle: token.fontStyle === 1 ? "italic" : undefined,
-            fontWeight: token.fontStyle === 2 ? 600 : undefined,
-          }}
-        >
-          {token.content}
-        </span>
-      ))}
+      {tokens.map((token) => {
+        const baseKey = `${token.content}:${token.color ?? ""}:${token.fontStyle ?? ""}`;
+        const occurrence = tokenCounts.get(baseKey) ?? 0;
+        tokenCounts.set(baseKey, occurrence + 1);
+
+        return (
+          <span
+            key={`${baseKey}:${occurrence}`}
+            style={{
+              color: token.color,
+              fontStyle: token.fontStyle === 1 ? "italic" : undefined,
+              fontWeight: token.fontStyle === 2 ? 600 : undefined,
+            }}
+          >
+            {token.content}
+          </span>
+        );
+      })}
     </>
   );
 }

@@ -37,7 +37,6 @@ type DecisionReviewScreenProps = {
   agentLaunchState: AgentLaunchState;
   appSettings: AppSettings;
   clearReview: () => void;
-  commentsByHunk: Map<string, ReviewProgressComment[]>;
   currentComment: ReviewProgressComment | undefined;
   handleCommentDecision: (comment: ReviewProgressComment, decision: Exclude<CommentDecision, "open">) => void;
   handleOpenAgent: (agent: ReviewAgent) => void;
@@ -46,7 +45,7 @@ type DecisionReviewScreenProps = {
   onOpenSettings: () => void;
   onOpenProvider?: () => void;
   openComments: ReviewProgressComment[];
-  pendingSliceIds: Set<string>;
+  pendingSliceCount: number;
   providerPullRequestLink?: ProviderPullRequestLink;
   prepareEvent?: ReviewSessionEvent;
   progress: UseReviewProgressResult;
@@ -69,7 +68,6 @@ export function DecisionReviewScreen({
   agentLaunchState,
   appSettings,
   clearReview,
-  commentsByHunk,
   currentComment,
   handleCommentDecision,
   handleOpenAgent,
@@ -78,7 +76,7 @@ export function DecisionReviewScreen({
   onOpenSettings,
   onOpenProvider,
   openComments,
-  pendingSliceIds,
+  pendingSliceCount,
   providerPullRequestLink,
   prepareEvent,
   progress,
@@ -163,7 +161,8 @@ export function DecisionReviewScreen({
       }
     >
       <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
-        <main className="min-h-0 overflow-y-auto p-5">
+        <main className="relative min-h-0 overflow-y-auto p-5">
+          {pendingSliceCount > 0 ? <StreamingProgressStrip /> : null}
           {showingSummary ? (
             <SubmissionPreviewMain
               clearReview={clearReview}
@@ -211,6 +210,7 @@ export function DecisionReviewScreen({
           activeId={active.id}
           deferredSlices={deferredSlices}
           reviewComplete={reviewComplete}
+          pendingSliceCount={pendingSliceCount}
           slices={progress.slices}
           queuedComments={progress.queuedComments}
           summaryActive={showingSummary}
@@ -224,6 +224,14 @@ export function DecisionReviewScreen({
         </div>
       ) : null}
     </AppShell>
+  );
+}
+
+function StreamingProgressStrip() {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden bg-primary/10">
+      <div className="anvil-progress-strip h-full w-1/3 rounded-r-full bg-primary/60" />
+    </div>
   );
 }
 
@@ -311,8 +319,8 @@ function SubmissionPreviewMain({
 
   return (
     <section className="mx-auto max-w-5xl">
-      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="border-l-4 border-l-primary px-4 py-4">
+      <div className="overflow-hidden rounded-lg border border-t-primary bg-card shadow-sm">
+        <div className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -361,7 +369,7 @@ function SubmissionPreviewMain({
           </div>
         ) : null}
 
-        <div className="grid gap-4 px-4 py-4">
+        <div className="grid gap-4 p-4">
           <SectionHeader title="Comments to post" count={comments.length} />
           {comments.length > 0 ? (
             <div className="grid gap-3">
@@ -482,7 +490,7 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 function PreviewComment({ comment, onOpen }: { comment: ReviewProgressComment; onOpen: () => void }) {
   return (
     <button type="button" className="rounded-md border bg-card text-left transition-colors hover:bg-accent/40" onClick={onOpen}>
-      <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 px-3 py-3">
+      <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 p-3">
         <span className="grid size-7 place-items-center rounded-full bg-anvil-info/10 text-[11px] font-semibold text-anvil-info">
           A
         </span>
