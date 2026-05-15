@@ -26,7 +26,7 @@ const eventTimeFormatter = new Intl.DateTimeFormat(undefined, {
 export function PreparingScreen({ state, repo, pullRequest, onCancel }: PreparingScreenProps) {
   const failed = state.status === "error";
   const activeEvent = state.events[state.events.length - 1];
-  const activeMessage = eventMessage(activeEvent) || state.error || "Starting the review session.";
+  const activeMessage = eventMessage(activeEvent) || state.error || "Starting the Anvil review session.";
   const phases = buildPhaseTimeline(state.events, failed);
   const sliceProgress = getSliceProgress(state.events);
   const overallProgress = getOverallProgress(phases);
@@ -50,7 +50,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
         <Card className="w-full max-w-3xl self-start overflow-hidden">
           <CardHeader className="space-y-1 px-5 py-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">{failed ? "Could not prepare review" : "Preparing review"}</h2>
+              <h2 className="text-lg font-semibold">{failed ? "Could not prepare review" : "Anvil is preparing the review"}</h2>
               <Badge
                 className={cn(
                   failed
@@ -58,7 +58,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
                     : "border-primary/25 bg-primary/10 text-primary",
                 )}
               >
-                {state.sessionId ? "tauri runtime" : "starting"}
+                {state.sessionId ? "Anvil runtime" : "starting"}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">{activeMessage}</p>
@@ -159,7 +159,7 @@ export function PreparingScreen({ state, repo, pullRequest, onCancel }: Preparin
           </CardContent>
           {state.error ? null : (
             <div className="flex items-center justify-between border-t px-5 py-3 text-xs text-muted-foreground">
-              <span>The review opens as soon as the slice plan is ready.</span>
+              <span>Anvil opens the review when the first actionable decision is ready.</span>
               {!failed ? <Loader2 className="size-4 animate-spin" /> : null}
             </div>
           )}

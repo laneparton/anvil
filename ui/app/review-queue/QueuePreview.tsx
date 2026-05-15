@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   ArrowRight,
+  Anvil,
   CheckCircle2,
   Circle,
   CircleAlert,
@@ -191,13 +192,19 @@ export function QueuePreview({
   );
 }
 
-export function QueueNoSelection() {
+export function QueueNoSelection({ loading = false }: { loading?: boolean }) {
   return (
     <div className="grid h-full place-items-center p-6 text-center">
-      <div className="max-w-sm">
-        <GitPullRequest className="mx-auto size-8 text-muted-foreground" />
-        <p className="mt-3 text-sm font-medium">No pull request selected.</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose a row from the review queue.</p>
+      <div className="max-w-md">
+        <span className="mx-auto grid size-12 place-items-center rounded-lg border bg-card text-primary shadow-sm">
+          <Anvil className="size-6" />
+        </span>
+        <p className="mt-4 text-lg font-semibold">Select a PR to start shaping the review.</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {loading
+            ? "Anvil is refreshing your queue. Pick a pull request when the signal looks useful."
+            : "Choose a pull request from the queue and Anvil will prepare the decision map, evidence, and review packet."}
+        </p>
       </div>
     </div>
   );
@@ -433,7 +440,7 @@ function ChangedFilesMap({ metadata }: { metadata: PreviewMetadata }) {
     return (
       <section className="grid gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Changed files</h3>
-        <p className="text-sm text-muted-foreground">No provider file list is cached for this pull request yet.</p>
+        <p className="text-sm text-muted-foreground">Anvil has not cached a provider file list for this pull request yet.</p>
       </section>
     );
   }
@@ -539,7 +546,7 @@ function DescriptionPreview({ metadata }: { metadata: PreviewMetadata }) {
             <span key={label} className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
               {label}
             </span>
-          )) : <span className="text-sm text-muted-foreground">No labels cached.</span>}
+          )) : <span className="text-sm text-muted-foreground">No labels cached by Anvil.</span>}
         </div>
       </section>
     </div>
@@ -621,7 +628,7 @@ function MarkdownDescription({ markdown }: { markdown: string }) {
     );
   }
 
-  return <div>{blocks.length > 0 ? blocks : <p>No provider description is cached for this pull request yet.</p>}</div>;
+  return <div>{blocks.length > 0 ? blocks : <p>Anvil has not cached a provider description for this pull request yet.</p>}</div>;
 }
 
 function InlineMarkdown({ text, keyPrefix }: { text: string; keyPrefix: string }) {
@@ -703,7 +710,7 @@ function buildPreviewMetadata(pullRequest: QueuePullRequest): PreviewMetadata {
     checks: pullRequest.checks ?? { passing: 0, failing: 0, pending: 0 },
     approvals: pullRequest.approvals ?? { received: 0, required: 0 },
     requestedReviewers: pullRequest.requestedReviewers ?? [],
-    description: pullRequest.description || "No provider description is cached for this pull request yet.",
+    description: pullRequest.description || "Anvil has not cached a provider description for this pull request yet.",
     labels: pullRequest.labels ?? [],
     changedFileGroups,
     activity: pullRequest.activity?.length

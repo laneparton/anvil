@@ -95,7 +95,7 @@ export function useReviewInbox({
               : current;
             const next = mergeReviewInboxRows(base, rows);
             setSelectedPullRequest((selected) =>
-              next.some((row) => row.id === selected) ? selected : next[0]?.id ?? "",
+              next.some((row) => row.id === selected) ? selected : "",
             );
             return next;
           });
@@ -152,8 +152,7 @@ export function useReviewInbox({
     };
   }, [appSettings, resetPreparation, reviewInboxRefreshId, settingsLoaded]);
 
-  const selectedInboxRow =
-    reviewInboxRows.find((row) => row.id === selectedPullRequest) ?? reviewInboxRows[0];
+  const selectedInboxRow = reviewInboxRows.find((row) => row.id === selectedPullRequest);
   const selectedInboxHydrating = Boolean(
     selectedInboxRow?.id && hydratingPullRequestId === selectedInboxRow.id,
   );

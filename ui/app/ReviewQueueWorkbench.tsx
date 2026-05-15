@@ -51,8 +51,7 @@ export function ReviewQueueWorkbench({
   });
   const selected =
     filteredRows.find((row) => row.id === selectedRowId) ??
-    rows.find((row) => row.id === selectedRowId) ??
-    filteredRows[0];
+    rows.find((row) => row.id === selectedRowId);
   const isFetching = loading || refreshing;
 
   const handleManualPrepare = () => {
@@ -86,7 +85,7 @@ export function ReviewQueueWorkbench({
   return (
     <AppShell
       title="Anvil"
-      subtitle="PR Review Workbench"
+      subtitle="PR review workbench"
       actions={
         <>
           <Button
@@ -133,7 +132,7 @@ export function ReviewQueueWorkbench({
               <GitPullRequest className="size-4 text-primary" />
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold">Review Queue</h2>
-                <p className="truncate text-xs text-muted-foreground">Pick the next PR to open in Anvil.</p>
+                <p className="truncate text-xs text-muted-foreground">Pick the next PR for Anvil to prepare.</p>
               </div>
               <Badge className="ml-auto h-7 border-transparent bg-muted px-2 font-mono text-xs text-muted-foreground">
                 {pullRequests.length} PRs
@@ -185,7 +184,7 @@ export function ReviewQueueWorkbench({
               <QueueEmptyState
                 icon={<Loader2 className="mx-auto size-8 animate-spin text-muted-foreground" />}
                 title="Loading PRs"
-                detail="Fetching open pull requests from your review sources."
+                detail="Anvil is fetching open pull requests from your review sources."
               />
             ) : (
               <QueueEmptyState
@@ -207,16 +206,17 @@ export function ReviewQueueWorkbench({
           ) : null}
         </aside>
 
-        <main className="min-h-0 overflow-hidden bg-background">
+        <main className="relative min-h-0 overflow-hidden bg-background">
+          {isFetching ? <InboxProgressStrip /> : null}
           {selected ? (
-                <QueuePreview
-                  pullRequest={selected}
-                  detailsLoading={selectedDetailsLoading}
-                  onPrepare={() => onPrepare(selected.raw)}
-                  onOpenProvider={() => onOpenProvider(selected.raw)}
-                />
+            <QueuePreview
+              pullRequest={selected}
+              detailsLoading={selectedDetailsLoading}
+              onPrepare={() => onPrepare(selected.raw)}
+              onOpenProvider={() => onOpenProvider(selected.raw)}
+            />
           ) : (
-            <QueueNoSelection />
+            <QueueNoSelection loading={isFetching} />
           )}
         </main>
       </section>
@@ -234,5 +234,13 @@ export function ReviewQueueWorkbench({
         />
       ) : null}
     </AppShell>
+  );
+}
+
+function InboxProgressStrip() {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 overflow-hidden bg-primary/10">
+      <div className="anvil-progress-strip h-full w-1/3 rounded-r-full bg-primary/60" />
+    </div>
   );
 }

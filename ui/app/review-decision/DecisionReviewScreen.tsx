@@ -329,7 +329,7 @@ function SubmissionPreviewMain({
               </div>
               <h2 className="mt-2 text-2xl font-semibold leading-tight">Submit review</h2>
               <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                Final provider packet for this pull request.
+                Final Anvil review packet for this pull request.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -353,7 +353,7 @@ function SubmissionPreviewMain({
 
         <div className="border-t bg-anvil-info/5 px-4 py-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
-            <span>{comments.length} comment{comments.length === 1 ? "" : "s"} ready for provider submit</span>
+            <span>{comments.length} Anvil comment{comments.length === 1 ? "" : "s"} ready for provider submit</span>
             <span>{handledComments.length} kept local</span>
           </div>
         </div>
@@ -378,7 +378,7 @@ function SubmissionPreviewMain({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No comments will be posted.</p>
+            <p className="text-sm text-muted-foreground">No Anvil comments will be posted.</p>
           )}
         </div>
 

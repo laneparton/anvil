@@ -19,6 +19,8 @@ test("review inbox renders and filters mocked provider rows", async ({ tauriPage
     .first();
   await expect(firstBitbucketRow).toBeVisible();
   await expect(firstBitbucketRow).not.toContainText("? files");
+  await expect(tauriPage.getByText("Select a PR to start shaping the review.")).toBeVisible();
+  await githubRow.click();
   await expect(tauriPage.getByTestId("review-preview-title")).toContainText("Tighten review inbox behavior");
 
   await tauriPage.getByTestId("open-manual-pr").click();

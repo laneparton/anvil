@@ -218,8 +218,8 @@ function ReviewPacketCard({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review packet</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {queuedCount > 0
-              ? `${queuedCount} comment${queuedCount === 1 ? "" : "s"} staged for provider submit.`
-              : "No comments staged yet."}
+              ? `${queuedCount} Anvil comment${queuedCount === 1 ? "" : "s"} staged for provider submit.`
+              : "No Anvil comments staged yet."}
           </p>
         </div>
         <Badge
